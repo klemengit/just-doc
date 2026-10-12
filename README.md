@@ -5,11 +5,23 @@ is saved to a JSON file together with the exact text and position it refers to,
 so a script or a coding assistant can find the right place in the source.
 
 ```bash
-python3 just_doc.py book.pdf          # open for commenting
-python3 just_doc.py book.pdf --read   # print the comments
+just-doc book.pdf          # open for commenting
+just-doc book.pdf --read   # print the comments
 ```
 
-Needs only Python 3 (standard library). The window is a Chromium, Brave or
+## Install
+
+With [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv tool install git+https://github.com/klemengit/just-doc
+```
+
+or with pipx: `pipx install git+https://github.com/klemengit/just-doc`.
+
+To try it without installing: `uvx --from git+https://github.com/klemengit/just-doc just-doc book.pdf`.
+
+Needs Python 3.9 or newer and nothing else. The window is a Chromium, Brave or
 Chrome app window if one is installed, otherwise a tab in the default browser.
 
 ## Keys

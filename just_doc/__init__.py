@@ -6,8 +6,8 @@ Comments are written to ``<name>.comments.json`` next to the PDF, so a script
 
 Usage
 -----
-    just_doc.py book.pdf            open the PDF for commenting
-    just_doc.py book.pdf --read     print the comments (with source lines if
+    just-doc book.pdf            open the PDF for commenting
+    just-doc book.pdf --read     print the comments (with source lines if
                                    book.synctex.gz is next to the PDF)
 
 Only the Python standard library is needed.
@@ -172,7 +172,7 @@ def read(doc, as_json):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Highlight and comment a PDF; comments are saved as JSON.")
+    ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF; comments are saved as JSON.")
     ap.add_argument("pdf", type=Path)
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read: print JSON")
