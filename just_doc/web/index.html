@@ -5,24 +5,26 @@
 <title>just-doc</title>
 <link rel="stylesheet" href="pdfjs/pdf_viewer.css">
 <style>
-  :root { --side: 340px; --bar: 40px; }
+  :root { --side: 280px; --bar: 26px; }
   body.no-side { --side: 0px; }
   body.no-side #side { display: none; }
   body.no-hl .pg .hl div:not(.on) { display: none; }
   body.single .pg:not(.show) { display: none; }
   html, body { margin: 0; background: #525659; font: 14px/1.4 system-ui, sans-serif; color: #222; }
   #bar { position: fixed; top: 0; left: 0; right: var(--side); height: var(--bar); z-index: 20;
-         background: #2b2d30; color: #ddd; display: flex; align-items: center; gap: 10px; padding: 0 12px;
-         box-sizing: border-box; white-space: nowrap; overflow: hidden; }
+         background: #2b2d30; color: #ddd; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+         box-sizing: border-box; white-space: nowrap; overflow: hidden; font-size: 12px; }
   #bar input, #bar select, #bar button { background: #3c3f41; color: #eee; border: 1px solid #555;
-         border-radius: 4px; padding: 2px 6px; font: inherit; }
-  #bar input { width: 52px; text-align: right; }
+         border-radius: 3px; padding: 0 5px; font: inherit; }
+  #bar input { width: 40px; text-align: right; }
   #bar select { max-width: 260px; }
-  #foot { position: fixed; left: 0; right: var(--side); bottom: 0; min-height: 30px; z-index: 20; background: #2b2d30;
-          color: #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; padding: 5px 12px;
-          box-sizing: border-box; }
+  #foot { position: fixed; left: 0; right: var(--side); bottom: 0; min-height: 22px; z-index: 20; background: #2b2d30;
+          color: #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; padding: 3px 10px;
+          box-sizing: border-box; font-size: 11px; line-height: 1.3; }
+  #keys { flex: 1; min-width: 0; }
   #mode { color: #ffd166; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; flex: none; }
   #bar kbd, #foot kbd { background: #555; border-radius: 3px; padding: 0 5px; color: #fff; font: inherit; }
+  #foot kbd { padding: 0 3px; }
   #status { margin-left: auto; }
   #toast { position: fixed; left: calc((100% - var(--side)) / 2); bottom: 48px; transform: translateX(-50%); z-index: 40;
            background: #1f7a3a; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 15px;
@@ -30,7 +32,7 @@
   #toast.err { background: #b00020; }
   #status.err { color: #ff6b6b; font-weight: bold; }
   #hint { color: #ffd166; }
-  #pages { padding: calc(var(--bar) + 12px) var(--side) 78px 0; box-sizing: border-box; display: flex; flex-direction: column;
+  #pages { padding: calc(var(--bar) + 10px) var(--side) 34px 0; box-sizing: border-box; display: flex; flex-direction: column;
            align-items: center; gap: 12px; min-width: max-content; }
   .pg { position: relative; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.5); flex: none; }
   .pg canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
@@ -53,16 +55,16 @@
   body.rectmode, body.rectmode .pg, body.rectmode .textLayer span { cursor: crosshair !important; user-select: none; }
   .pg .num { position: absolute; right: -4px; top: 0; transform: translateX(100%); color: #bbb; font-size: 12px; }
   #side { position: fixed; top: 0; right: 0; bottom: 0; width: var(--side); background: #f4f4f2;
-          border-left: 1px solid #999; overflow-y: auto; z-index: 21; box-sizing: border-box; }
-  #side h1 { font-size: 14px; margin: 0; padding: 10px 12px; background: #e4e4e0; position: sticky; top: 0; }
-  .it { padding: 8px 12px; border-bottom: 1px solid #ddd; cursor: pointer; }
+          border-left: 1px solid #999; overflow-y: auto; z-index: 21; box-sizing: border-box; font-size: 12px; line-height: 1.35; }
+  #side h1 { font-size: 12px; margin: 0; padding: 5px 10px; background: #e4e4e0; position: sticky; top: 0; }
+  .it { padding: 5px 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
   .it:hover { background: #eaeae6; }
   .it.on { background: #ffe9e0; box-shadow: inset 3px 0 0 #d00000; }
-  .it .p { color: #777; font-size: 12px; }
+  .it .p { color: #777; font-size: 11px; }
   .it .q { color: #555; font-style: italic; display: -webkit-box; -webkit-line-clamp: 3;
            -webkit-box-orient: vertical; overflow: hidden; }
   .it .q.strike { text-decoration: line-through; text-decoration-color: #d00000; }
-  .it .c { margin-top: 4px; white-space: pre-wrap; font-weight: 600; }
+  .it .c { margin-top: 2px; white-space: pre-wrap; font-weight: 600; }
   .it .c.none { color: #aaa; font-weight: normal; }
   #editor { position: fixed; z-index: 30; display: none; width: 380px; background: #fff; border: 2px solid #d00000;
             border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.4); padding: 6px; }
@@ -107,7 +109,7 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>Enter</kbd> follow link &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
@@ -282,7 +284,7 @@ function goto(p, yPt = 0) {
   if (state.single) {
     showSingle(p);
     window.scrollTo(0, yPt ? pgs[p].offsetTop + yPt * state.scale - 160 : 0);
-  } else window.scrollTo(0, pgs[p].offsetTop + yPt * state.scale - (yPt ? 160 : 50));
+  } else window.scrollTo(0, pgs[p].offsetTop + yPt * state.scale - (yPt ? 160 : $('bar').offsetHeight + 10));
   updateVisible();
 }
 
@@ -303,7 +305,7 @@ function setSingle(on, fit = true) {
     if (fit) {
       state.scaleBefore = state.scale;
       store.set('scaleBefore', state.scale);
-      const width = window.innerWidth - $('side').offsetWidth - 24, height = window.innerHeight - $('bar').offsetHeight - 90;
+      const width = window.innerWidth - $('side').offsetWidth - 24, height = window.innerHeight - $('bar').offsetHeight - 44;
       setScale(Math.min(width / base.width, height / base.height));
     }
     window.scrollTo(0, 0);
@@ -618,7 +620,7 @@ function removeSelected() {
 
 const KEYS_NORMAL = $('keys').innerHTML;
 const KEYS_VISUAL = '<kbd>h</kbd>/<kbd>l</kbd> character &nbsp;<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd> word &nbsp;<kbd>j</kbd>/<kbd>k</kbd> line &nbsp;'
-                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>Esc</kbd> cancel';
+                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>Esc</kbd> cancel';
 
 function setMode(m) {
   state.mode = m;
