@@ -6,6 +6,9 @@
 <link rel="stylesheet" href="pdfjs/pdf_viewer.css">
 <style>
   :root { --side: 340px; --bar: 40px; }
+  body.no-side { --side: 0px; }
+  body.no-side #side { display: none; }
+  body.no-hl .pg .hl div:not(.on) { display: none; }
   html, body { margin: 0; background: #525659; font: 14px/1.4 system-ui, sans-serif; color: #222; }
   #bar { position: fixed; top: 0; left: 0; right: var(--side); height: var(--bar); z-index: 20;
          background: #2b2d30; color: #ddd; display: flex; align-items: center; gap: 10px; padding: 0 12px;
@@ -14,9 +17,10 @@
          border-radius: 4px; padding: 2px 6px; font: inherit; }
   #bar input { width: 52px; text-align: right; }
   #bar select { max-width: 260px; }
-  #foot { position: fixed; left: 0; right: var(--side); bottom: 0; height: 30px; z-index: 20; background: #2b2d30;
-          color: #ddd; display: flex; align-items: center; justify-content: center; padding: 0 12px;
-          box-sizing: border-box; white-space: nowrap; overflow: hidden; }
+  #foot { position: fixed; left: 0; right: var(--side); bottom: 0; min-height: 30px; z-index: 20; background: #2b2d30;
+          color: #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; padding: 5px 12px;
+          box-sizing: border-box; }
+  #mode { color: #ffd166; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; flex: none; }
   #bar kbd, #foot kbd { background: #555; border-radius: 3px; padding: 0 5px; color: #fff; font: inherit; }
   #status { margin-left: auto; }
   #toast { position: fixed; left: calc((100% - var(--side)) / 2); bottom: 48px; transform: translateX(-50%); z-index: 40;
@@ -25,7 +29,7 @@
   #toast.err { background: #b00020; }
   #status.err { color: #ff6b6b; font-weight: bold; }
   #hint { color: #ffd166; }
-  #pages { padding: calc(var(--bar) + 12px) var(--side) 60px 0; box-sizing: border-box; display: flex; flex-direction: column;
+  #pages { padding: calc(var(--bar) + 12px) var(--side) 78px 0; box-sizing: border-box; display: flex; flex-direction: column;
            align-items: center; gap: 12px; min-width: max-content; }
   .pg { position: relative; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.5); flex: none; }
   .pg canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
@@ -35,6 +39,8 @@
   .pg .hl div.box { background: rgba(255, 179, 71, .16); border: 2px solid #f08000; box-sizing: border-box; }
   .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
   .pg .textLayer { z-index: 2; }
+  #cur { position: absolute; z-index: 3; background: rgba(0, 90, 255, .32); outline: 1px solid #0050d0;
+         border-radius: 1px; pointer-events: none; }
   .pg .draw { position: absolute; z-index: 3; border: 2px dashed #d00000; background: rgba(208, 0, 0, .08);
               box-sizing: border-box; pointer-events: none; }
   body.rectmode, body.rectmode .pg, body.rectmode .textLayer span { cursor: crosshair !important; user-select: none; }
@@ -55,20 +61,80 @@
   #editor textarea { width: 100%; height: 90px; box-sizing: border-box; border: 0; outline: 0; resize: vertical;
             font: 14px/1.4 system-ui, sans-serif; }
   #editor small { color: #888; }
+  ::highlight(find) { background-color: rgba(255, 150, 0, .38); }
+  ::highlight(findcur) { background-color: rgba(225, 0, 110, .45); }
+  #findbox { display: none; align-items: center; gap: 2px; color: #ffd166; flex: none; }
+  #findbox.open { display: inline-flex; }
+  #findbox input { width: 260px; background: #3c3f41; color: #eee; border: 1px solid #555; border-radius: 4px;
+          padding: 1px 6px; font: inherit; }
+  #findinfo { color: #ffd166; flex: none; }
+  #toc { position: fixed; top: var(--bar); left: 0; bottom: 0; width: 400px; max-width: 80vw; z-index: 45; display: none;
+         background: #f4f4f2; border-right: 1px solid #999; box-shadow: 4px 0 16px rgba(0,0,0,.4); overflow-y: auto; }
+  #toc.open { display: block; }
+  #toc h1 { font-size: 14px; margin: 0; padding: 10px 12px; background: #e4e4e0; position: sticky; top: 0; }
+  #toc h1 small { font-weight: normal; color: #777; }
+  .t { display: flex; gap: 10px; padding: 4px 12px; cursor: pointer; }
+  .t:hover { background: #eaeae6; }
+  .t.on { background: #ffe9e0; box-shadow: inset 3px 0 0 #d00000; }
+  .t .n { margin-left: auto; color: #777; }
+  #help { position: fixed; inset: 0; z-index: 50; background: rgba(20,20,22,.72); display: none;
+          align-items: center; justify-content: center; }
+  #help.open { display: flex; }
+  #help .card { background: #f4f4f2; color: #222; border-radius: 8px; padding: 18px 24px; max-width: 560px;
+          max-height: 82vh; overflow: auto; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #help h2 { margin: 0 0 12px; font-size: 15px; }
+  #help table { border-collapse: collapse; font-size: 13px; width: 100%; }
+  #help td { padding: 3px 16px 3px 0; vertical-align: top; }
+  #help td:first-child { white-space: nowrap; color: #555; }
+  #help kbd { background: #ddd; border: 1px solid #bbb; border-radius: 3px; padding: 0 5px; font: inherit; }
+  #help .sub td:first-child { color: #999; padding-left: 14px; }
 </style>
 </head>
 <body>
 <div id="bar">
   <span>p. <input id="pno" type="text" value="1"> / <span id="pcount">?</span></span>
-  <select id="outline"><option value="">contents …</option></select>
+  <button id="tocbtn">contents</button>
   <button id="zout">−</button><span id="zval"></span><button id="zin">+</button>
   <span id="hint"></span>
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>r</kbd> rectangle &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom &nbsp;<kbd>Ctrl</kbd>+<kbd>S</kbd> export PDF</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
+<div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
+<div id="help"><div class="card">
+  <h2>Keys — press <kbd>?</kbd> or <kbd>Esc</kbd> to close</h2>
+  <table>
+    <tr><td><kbd>a</kbd></td><td>highlight the selected text</td></tr>
+    <tr><td><kbd>s</kbd></td><td>highlight and comment (or edit the selected highlight's comment)</td></tr>
+    <tr><td><kbd>r</kbd></td><td>draw a rectangle and comment (for a figure, equation or code)</td></tr>
+    <tr><td><kbd>d</kbd></td><td>delete the selected highlight or rectangle</td></tr>
+    <tr><td><kbd>u</kbd></td><td>undo the last delete</td></tr>
+    <tr><td><kbd>c</kbd></td><td>hide or show the comment list</td></tr>
+    <tr><td><kbd>C</kbd></td><td>hide or show the highlights on the page</td></tr>
+    <tr><td><kbd>n</kbd> / <kbd>p</kbd></td><td>next / previous comment</td></tr>
+    <tr><td><kbd>/</kbd></td><td>search the whole PDF; <kbd>Enter</kbd> starts it</td></tr>
+    <tr class="sub"><td><kbd>n</kbd> / <kbd>N</kbd></td><td>next / previous match, while a search is active</td></tr>
+    <tr class="sub"><td><kbd>Esc</kbd></td><td>end the search</td></tr>
+    <tr><td><kbd>t</kbd></td><td>table of contents: <kbd>j</kbd> <kbd>k</kbd> move, <kbd>Enter</kbd> go</td></tr>
+    <tr><td><kbd>h</kbd> <kbd>l</kbd></td><td>move the cursor (blue) by character</td></tr>
+    <tr><td><kbd>w</kbd> <kbd>b</kbd> <kbd>e</kbd></td><td>next word / word start / word end</td></tr>
+    <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>move the cursor by line; the page follows</td></tr>
+    <tr><td><kbd>0</kbd> <kbd>$</kbd></td><td>start / end of the line</td></tr>
+    <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
+    <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
+    <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
+    <tr class="sub"><td>the keys above</td><td>extend the selection</td></tr>
+    <tr class="sub"><td><kbd>o</kbd></td><td>move the other end of the selection</td></tr>
+    <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>highlight / comment the selection</td></tr>
+    <tr><td><kbd>Ctrl</kbd> wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom around the pointer</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>export a copy of the PDF with the comments inside</td></tr>
+    <tr><td><kbd>?</kbd></td><td>show or hide this list</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>cancel / deselect</td></tr>
+  </table>
+</div></div>
 <div id="editor"><textarea id="etext" placeholder="comment …"></textarea>
   <small>Enter saves · Shift+Enter new line · Esc cancels</small></div>
 
@@ -82,11 +148,13 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
-const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null };
+const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
+                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0 };
 const dpr = window.devicePixelRatio || 1;
 const pagesEl = $('pages');
 const pgs = [];        // 1-based: page element
 const rendered = {};   // page number -> {canvas, tlDiv, tl, task, scale, pending}
+const wordCache = {};  // page number -> word list, for visual mode; dropped when the page is unloaded
 let zoomTimer = 0;
 
 const pdf = await pdfjsLib.getDocument('/doc').promise;
@@ -132,7 +200,7 @@ async function renderPage(i) {
     tlDiv.className = 'textLayer';
     pgs[i].appendChild(tlDiv);
     rec.tl = new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: tlDiv, viewport: vp });
-    rec.tl.render().catch(() => {});
+    rec.tl.render().then(() => { rec.tlReady = true; syncCursor(); paintFind(); }).catch(() => {});
   }
   try { await task.promise; } catch { canvas.width = 0; return; }
   if (rendered[i] !== rec || rec.pending !== want) { canvas.width = 0; return; }
@@ -151,6 +219,7 @@ function unloadPage(i) {
   if (rec.canvas) { rec.canvas.width = 0; rec.canvas.remove(); }
   rec.tlDiv?.remove();
   delete rendered[i];
+  delete wordCache[i];
 }
 
 function currentPage(clientY = window.innerHeight * 0.35) {
@@ -168,9 +237,12 @@ function updateVisible() {
   for (const i of keep) renderPage(i);
   if (document.activeElement !== $('pno')) $('pno').value = cur;
   store.set('page', cur);
+  syncCursor();
 }
 let raf = 0;
-window.addEventListener('scroll', () => { if (!raf && !zoomTimer) raf = requestAnimationFrame(() => { raf = 0; updateVisible(); }); });
+window.addEventListener('scroll', () => {
+  if (!raf && !zoomTimer) raf = requestAnimationFrame(() => { raf = 0; updateVisible(); });
+});
 
 function goto(p, yPt = 0) {
   p = Math.min(pdf.numPages, Math.max(1, p | 0));
@@ -191,6 +263,7 @@ function setScale(s, cx = (window.innerWidth - $('side').offsetWidth) / 2, cy = 
   store.set('scale', s);
   applyScale();
   drawHighlights();
+  drawCursor();
   const nb = pgs[p].getBoundingClientRect();
   const visible = window.innerWidth - $('side').offsetWidth;
   window.scrollBy(nb.left - (visible - nb.width) / 2, nb.top + fy * nb.height - cy);
@@ -424,7 +497,7 @@ function openEditor(id) {
   ed.style.display = 'block';
   let left = box.left + last.x * state.scale;
   let top = box.top + (last.y + last.h) * state.scale + 8;
-  left = Math.max(8, Math.min(left, window.innerWidth - 340 - 400));
+  left = Math.max(8, Math.min(left, window.innerWidth - $('side').offsetWidth - 400));
   if (top > window.innerHeight - 150 || top < 50) top = Math.max(60, window.innerHeight - 170);
   ed.style.left = left + 'px';
   ed.style.top = top + 'px';
@@ -457,6 +530,556 @@ function removeSelected() {
   hint('deleted (u = undo)');
 }
 
+// ---------- keyboard: normal mode and vim-style motions ----------
+
+const KEYS_NORMAL = $('keys').innerHTML;
+const KEYS_VISUAL = '<kbd>h</kbd>/<kbd>l</kbd> character &nbsp;<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd> word &nbsp;<kbd>j</kbd>/<kbd>k</kbd> line &nbsp;'
+                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>Esc</kbd> cancel';
+
+function setMode(m) {
+  state.mode = m;
+  $('mode').textContent = (m === 'visual' ? 'visual' : m === 'vline' ? 'v-line' : 'normal')
+                        + (document.body.classList.contains('no-hl') ? ' · highlights hidden' : '');
+  $('keys').innerHTML = m === 'normal' ? KEYS_NORMAL : KEYS_VISUAL;
+}
+function toggleSide() {
+  const off = document.body.classList.toggle('no-side');
+  store.set('noSide', off);
+  hint(off ? 'comment list hidden (c shows it)' : '');
+}
+// hides the highlights to read the clean page; the selected one stays visible
+function toggleHl() { document.body.classList.toggle('no-hl'); setMode(state.mode); }
+function toggleHelp() { $('help').classList.toggle('open'); }
+function scrollByPx(px) { window.scrollBy(0, px); }
+function scrollTop() { window.scrollTo(0, 0); }
+function scrollBottom() { window.scrollTo(0, pagesEl.scrollHeight); }
+
+// step to the next (dir 1) or previous (dir -1) comment, wrapping around;
+// without a selected comment it starts from the current page
+function stepAnnot(dir) {
+  const n = state.annots.length;
+  if (!n) { hint('no comments'); return; }
+  let j = state.annots.findIndex(a => a.id === state.sel);
+  if (j >= 0) j = (j + dir + n) % n;
+  else {
+    const cur = currentPage();
+    if (dir > 0) { j = state.annots.findIndex(a => a.rects[0].p >= cur); if (j < 0) j = 0; }
+    else { j = n - 1; while (j > 0 && state.annots[j].rects[0].p > cur) j--; }
+  }
+  const a = state.annots[j];
+  select(a.id);
+  goto(a.rects[0].p, a.rects[0].y);
+  hint(`comment ${j + 1} of ${n}`);
+}
+
+// ---------- visual mode ----------
+// A position is {p, i, o}: page, word index and character offset in the word. Words are
+// taken from the text layer in its own order, which is the reading order, so a selection
+// stays inside its column. Sizes are in PDF points from the top-left corner of the page,
+// so they stay valid when the page is scrolled or zoomed.
+
+function charRect(node, from, to) {
+  const range = document.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
+  return range.getBoundingClientRect();
+}
+
+function wordsForPage(p) {
+  if (wordCache[p]) return wordCache[p];
+  const layer = pgs[p] && pgs[p].querySelector('.textLayer');
+  const out = [];
+  if (!layer) return out;
+  const box = pgs[p].getBoundingClientRect();
+  for (const span of layer.querySelectorAll('span')) {
+    if (span.children.length) continue;
+    const text = span.textContent;
+    const node = span.firstChild;
+    if (!text || !text.trim() || !node || node.nodeType !== 3) continue;
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(text))) {
+      const r = charRect(node, m.index, m.index + m[0].length);
+      if (r.width < 0.5 && r.height < 0.5) continue;
+      out.push({ node, s: m.index, n: m[0].length, x: (r.left - box.left) / state.scale, w: r.width / state.scale,
+                 y: (r.top + r.height / 2 - box.top) / state.scale, h: r.height / state.scale, line: 0 });
+    }
+  }
+  // words at the same height share a line number
+  let line = -1, prev = null;
+  for (const w of [...out].sort((a, b) => a.y - b.y)) {
+    if (prev === null || w.y - prev > w.h * 0.6) line++;
+    prev = w.y;
+    w.line = line;
+  }
+  if (out.length) wordCache[p] = out;
+  return out;
+}
+
+const wordAt = pos => pos && wordsForPage(pos.p)[pos.i];
+
+// horizontal centre of the character under the position, in points
+function charX(pos) {
+  const w = wordAt(pos);
+  const r = charRect(w.node, w.s + pos.o, w.s + pos.o + 1);
+  return (r.left + r.width / 2 - pgs[pos.p].getBoundingClientRect().left) / state.scale;
+}
+
+// the nearest page in the direction dir that has its text loaded
+function nearPage(p, dir) {
+  for (let q = p + dir; q >= 1 && q <= pdf.numPages && Math.abs(q - p) <= 2; q += dir) if (wordsForPage(q).length) return q;
+  return 0;
+}
+
+function stepWord(pos, dir) {
+  const ws = wordsForPage(pos.p);
+  if (pos.i + dir >= 0 && pos.i + dir < ws.length) return { p: pos.p, i: pos.i + dir };
+  const q = nearPage(pos.p, dir);
+  return q ? { p: q, i: dir > 0 ? 0 : wordsForPage(q).length - 1 } : null;
+}
+
+// first and last word index of the line the position is on
+function lineSpan(pos) {
+  const ws = wordsForPage(pos.p);
+  let a = pos.i, b = pos.i;
+  while (a > 0 && ws[a - 1].line === ws[pos.i].line) a--;
+  while (b < ws.length - 1 && ws[b + 1].line === ws[pos.i].line) b++;
+  return [a, b];
+}
+
+function stepLine(pos, dir) {
+  const x = state.wantX === null ? charX(pos) : state.wantX;
+  state.wantX = x;
+  let p = pos.p, ws = wordsForPage(p);
+  let onLine = ws.filter(w => w.line === ws[pos.i].line + dir);
+  if (!onLine.length) {
+    p = nearPage(p, dir);
+    if (!p) return null;
+    ws = wordsForPage(p);
+    const edge = dir > 0 ? 0 : Math.max(...ws.map(w => w.line));
+    onLine = ws.filter(w => w.line === edge);
+  }
+  const gap = w => Math.max(w.x - x, x - w.x - w.w, 0);
+  const best = onLine.reduce((m, w) => gap(w) < gap(m) ? w : m);
+  const t = { p, i: ws.indexOf(best), o: 0 };
+  let bd = Infinity;
+  for (let o = 0; o < best.n; o++) { const d = Math.abs(charX({ ...t, o }) - x); if (d < bd) { bd = d; t.o = o; } }
+  return t;
+}
+
+const motions = {
+  l(c) { if (c.o < wordAt(c).n - 1) return { ...c, o: c.o + 1 }; const t = stepWord(c, 1); return t && { ...t, o: 0 }; },
+  h(c) { if (c.o > 0) return { ...c, o: c.o - 1 }; const t = stepWord(c, -1); return t && { ...t, o: wordAt(t).n - 1 }; },
+  w(c) { const t = stepWord(c, 1); return t && { ...t, o: 0 }; },
+  b(c) { if (c.o > 0) return { ...c, o: 0 }; const t = stepWord(c, -1); return t && { ...t, o: 0 }; },
+  e(c) { const n = wordAt(c).n; if (c.o < n - 1) return { ...c, o: n - 1 }; const t = stepWord(c, 1); return t && { ...t, o: wordAt(t).n - 1 }; },
+  0(c) { return { p: c.p, i: lineSpan(c)[0], o: 0 }; },
+  $(c) { const i = lineSpan(c)[1]; return { p: c.p, i, o: wordsForPage(c.p)[i].n - 1 }; },
+  j(c) { return stepLine(c, 1); },
+  k(c) { return stepLine(c, -1); },
+};
+
+// true when the word of the position is on the screen
+function seen(pos) {
+  const w = wordAt(pos);
+  if (!w) return false;
+  const y = pgs[pos.p].getBoundingClientRect().top + w.y * state.scale;
+  return y > $('bar').offsetHeight + 8 && y < window.innerHeight - $('foot').offsetHeight - 8;
+}
+
+// puts the cursor on the first word on the screen, unless it is on the screen already
+function placeCursor() {
+  if (seen(state.cursor)) return true;
+  const top = $('bar').offsetHeight, bottom = window.innerHeight - $('foot').offsetHeight;
+  for (let p = currentPage(top); p <= currentPage(bottom); p++) {
+    const i = wordsForPage(p).findIndex((w, i) => seen({ p, i }));
+    if (i >= 0) { state.cursor = { p, i, o: 0 }; state.wantX = null; return true; }
+  }
+  return false;
+}
+
+// the cursor is a blue block over one character; it marks where v and V start
+function drawCursor() {
+  const w = wordAt(state.cursor);
+  let el = $('cur');
+  if (!w) return;
+  if (!el) { el = document.createElement('div'); el.id = 'cur'; }
+  const pg = pgs[state.cursor.p], box = pg.getBoundingClientRect();
+  const r = charRect(w.node, w.s + state.cursor.o, w.s + state.cursor.o + 1);
+  if (el.parentNode !== pg) pg.appendChild(el);
+  el.style.cssText = `left:${r.left - box.left}px;top:${r.top - box.top}px;width:${r.width}px;height:${r.height}px`;
+}
+
+// keeps the cursor on the screen while the page is scrolled, as vim does
+function syncCursor() {
+  if (state.mode === 'normal' && placeCursor()) drawCursor();
+}
+
+// scrolls so that the character under the cursor is on the screen
+function showCursor() {
+  const w = wordAt(state.cursor);
+  if (!w) return;
+  const r = charRect(w.node, w.s + state.cursor.o, w.s + state.cursor.o + 1);
+  const top = $('bar').offsetHeight + 40, bottom = window.innerHeight - $('foot').offsetHeight - 40;
+  const right = window.innerWidth - $('side').offsetWidth - 20;
+  window.scrollBy(r.left < 20 ? r.left - 20 : r.right > right ? r.right - right : 0,
+                  r.top < top ? r.top - top : r.bottom > bottom ? r.bottom - bottom : 0);
+}
+
+// moves the cursor n times; returns false when there is no text to move on
+function moveCursor(key, n) {
+  if (state.mode === 'normal') { if (!placeCursor()) return false; }
+  else if (!wordAt(state.cursor)) { exitVisual(); return true; }
+  if (key !== 'j' && key !== 'k') state.wantX = null;
+  for (let i = 0; i < n; i++) {
+    const t = motions[key](state.cursor);
+    if (!t) break;
+    state.cursor = t;
+  }
+  if (state.mode !== 'normal') applyVisual();
+  showCursor();
+  drawCursor();
+  return true;
+}
+
+// the word at a point of a page, in points; used to put the cursor where the mouse clicked
+function wordAtPoint(p, x, y) {
+  return wordsForPage(p).findIndex(w => x >= w.x - 1 && x <= w.x + w.w + 1 && Math.abs(y - w.y) <= w.h / 2 + 1);
+}
+
+function startVisual(mode) {
+  if (!placeCursor()) { hint('no text on the screen'); return; }
+  state.anchor = { ...state.cursor };
+  state.wantX = null;
+  setMode(mode);
+  applyVisual();
+  drawCursor();
+}
+
+function exitVisual() {
+  setMode('normal');
+  window.getSelection().removeAllRanges();
+  select(state.sel);
+}
+
+// turn the anchor..cursor range into a real DOM selection, so a/s reuse the
+// normal capture path
+function applyVisual() {
+  const a = state.anchor, c = state.cursor;
+  if (!wordAt(a) || !wordAt(c)) { hint('selection is too long'); return; }
+  const forward = a.p < c.p || (a.p === c.p && (a.i < c.i || (a.i === c.i && a.o <= c.o)));
+  let first = forward ? a : c, last = forward ? c : a;
+  if (state.mode === 'vline') {
+    first = { p: first.p, i: lineSpan(first)[0], o: 0 };
+    const i = lineSpan(last)[1];
+    last = { p: last.p, i, o: wordsForPage(last.p)[i].n - 1 };
+  }
+  const wf = wordAt(first), wl = wordAt(last);
+  const range = document.createRange();
+  try {
+    range.setStart(wf.node, wf.s + first.o);
+    range.setEnd(wl.node, wl.s + last.o + 1);
+  } catch { return; }
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function visualKey(e, n) {
+  const k = e.key;
+  if (Object.hasOwn(motions, k)) { e.preventDefault(); moveCursor(k, n); return; }
+  switch (k) {
+    case 'Escape': e.preventDefault(); exitVisual(); return;
+    case 'v': case 'V': {
+      e.preventDefault();
+      const m = k === 'v' ? 'visual' : 'vline';
+      if (state.mode === m) exitVisual(); else { setMode(m); applyVisual(); }
+      return;
+    }
+    case 'o':
+      e.preventDefault();
+      [state.anchor, state.cursor] = [state.cursor, state.anchor];
+      state.wantX = null;
+      showCursor();
+      drawCursor();
+      return;
+    case 'a': e.preventDefault(); if (!addFromSelection()) hint('nothing selected'); exitVisual(); return;
+    case 's': e.preventDefault(); {
+      const a = addFromSelection();
+      exitVisual();
+      if (a) openEditor(a.id); else hint('nothing selected');
+    } return;
+  }
+}
+
+// ---------- search ----------
+// The text of every page is read once, so pages that are not on the screen are searched too.
+// A match is then located again in the text layer of its page, when that page is drawn.
+
+const pageText = [];   // 1-based: text of the page
+
+function matchesIn(text, re) {
+  const out = [];
+  re.lastIndex = 0;
+  for (let m; (m = re.exec(text)); ) {
+    if (!m[0].length) { re.lastIndex++; continue; }
+    out.push([m.index, m[0].length]);
+  }
+  return out;
+}
+
+// the matches on a drawn page, as ranges in its text layer
+function domMatches(p, re) {
+  const rec = rendered[p];
+  if (!rec || !rec.tlReady) return [];
+  const segs = [];
+  let text = '';
+  for (const el of rec.tlDiv.querySelectorAll('span, br')) {
+    if (el.tagName === 'BR') { text += ' '; continue; }
+    const node = el.firstChild;
+    if (el.children.length || !node || node.nodeType !== 3) continue;
+    segs.push({ node, at: text.length });
+    text += node.data;
+  }
+  const locate = pos => {
+    let i = segs.length - 1;
+    while (i > 0 && segs[i].at > pos) i--;
+    return segs[i];
+  };
+  return matchesIn(text, re).map(([at, len]) => {
+    const a = locate(at), b = locate(at + len - 1);
+    const range = document.createRange();
+    range.setStart(a.node, Math.min(at - a.at, a.node.length));
+    range.setEnd(b.node, Math.min(at + len - b.at, b.node.length));
+    return range;
+  });
+}
+
+// colours the matches on the drawn pages and, after n / N, scrolls to the current one
+function paintFind() {
+  const f = state.find, all = [], cur = [];
+  if (f) {
+    const hit = f.hits[f.cur];
+    for (const k of Object.keys(rendered)) {
+      const ms = domMatches(+k, f.re);
+      ms.forEach((r, i) => (+k === hit.p && i === Math.min(hit.k, ms.length - 1) ? cur : all).push(r));
+    }
+  }
+  if (window.Highlight && CSS.highlights) {
+    CSS.highlights.set('find', new Highlight(...all));
+    CSS.highlights.set('findcur', new Highlight(...cur));
+  }
+  if (!f || !f.jump || !cur.length) return;
+  f.jump = false;
+  const r = cur[0].getBoundingClientRect();
+  const right = window.innerWidth - $('side').offsetWidth - 20;
+  window.scrollBy(r.left < 20 ? r.left - 20 : r.right > right ? r.right - right : 0, r.top - window.innerHeight * 0.35);
+  // the cursor goes to the match, so v can start a selection there
+  const p = f.hits[f.cur].p, node = cur[0].startContainer, at = cur[0].startOffset;
+  const i = wordsForPage(p).findIndex(w => w.node === node && at >= w.s && at < w.s + w.n);
+  if (i >= 0 && state.mode === 'normal') { state.cursor = { p, i, o: at - wordsForPage(p)[i].s }; state.wantX = null; drawCursor(); }
+}
+
+function showHit() {
+  const f = state.find, hit = f.hits[f.cur];
+  $('findinfo').textContent = `/${f.q}  ${f.cur + 1} of ${f.hits.length}`;
+  f.jump = true;
+  if (!rendered[hit.p] || !rendered[hit.p].tlReady) goto(hit.p);
+  paintFind();
+}
+
+function stepFind(dir) {
+  const f = state.find;
+  f.cur = (f.cur + dir + f.hits.length) % f.hits.length;
+  showHit();
+}
+
+function clearFind() {
+  state.find = null;
+  $('findinfo').textContent = '';
+  paintFind();
+}
+
+// lower case in the query matches both cases; a capital letter makes the search exact
+async function runFind(q) {
+  q = q.trim();
+  if (!q) { clearFind(); return; }
+  for (let i = pageText.length || 1; i <= pdf.numPages; i++) {
+    if (i % 20 === 0) $('findinfo').textContent = `reading page ${i} of ${pdf.numPages} …`;
+    const items = (await (await pdf.getPage(i)).getTextContent()).items;
+    pageText[i] = items.map(it => it.str === undefined ? '' : it.str + (it.hasEOL ? ' ' : '')).join('');
+  }
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'), /[A-Z]/.test(q) ? 'g' : 'gi');
+  const hits = [];
+  for (let p = 1; p <= pdf.numPages; p++) matchesIn(pageText[p], re).forEach((m, k) => hits.push({ p, k }));
+  if (!hits.length) { clearFind(); $('findinfo').textContent = `/${q}  no match`; return; }
+  const here = currentPage();
+  state.find = { q, re, hits, cur: Math.max(0, hits.findIndex(h => h.p >= here)), jump: false };
+  showHit();
+}
+
+function openFind() {
+  $('findbox').classList.add('open');
+  $('q').value = '';
+  $('q').focus();
+}
+$('q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== 'Escape') return;
+  e.preventDefault();
+  const q = e.key === 'Enter' ? $('q').value : null;
+  $('q').blur();
+  if (q !== null) runFind(q);
+});
+$('q').addEventListener('blur', () => $('findbox').classList.remove('open'));
+
+// ---------- table of contents ----------
+
+const toc = [];   // {title, depth, dest, page, y, el}
+
+async function loadToc() {
+  const walk = (items, depth) => {
+    for (const it of items || []) { toc.push({ title: it.title, depth, dest: it.dest, page: 0, y: 0 }); walk(it.items, depth + 1); }
+  };
+  try { walk(await pdf.getOutline(), 0); } catch {}
+  toc.forEach((t, i) => {
+    t.el = document.createElement('div');
+    t.el.className = 't';
+    t.el.style.paddingLeft = 12 + t.depth * 16 + 'px';
+    const title = document.createElement('span'); title.textContent = t.title;
+    const n = document.createElement('span'); n.className = 'n';
+    t.el.append(title, n);
+    t.el.addEventListener('click', () => tocGo(i));
+    $('toclist').appendChild(t.el);
+  });
+  for (const t of toc) {
+    try {
+      const dest = typeof t.dest === 'string' ? await pdf.getDestination(t.dest) : t.dest;
+      t.page = Number.isInteger(dest[0]) ? dest[0] + 1 : await pdf.getPageIndex(dest[0]) + 1;
+      const kind = dest[1] && dest[1].name;
+      const top = kind === 'XYZ' ? dest[3] : kind === 'FitH' || kind === 'FitBH' ? dest[2] : null;
+      if (typeof top === 'number') t.y = Math.max(0, base.height - top);
+      t.el.lastChild.textContent = t.page;
+    } catch {}
+  }
+}
+
+function markToc(i) {
+  state.tocAt = Math.min(toc.length - 1, Math.max(0, i));
+  toc.forEach((t, j) => t.el.classList.toggle('on', j === state.tocAt));
+  toc[state.tocAt].el.scrollIntoView({ block: 'nearest' });
+}
+
+function toggleToc() {
+  if (!toc.length) { hint('this PDF has no table of contents'); return; }
+  if (!$('toc').classList.toggle('open')) return;
+  // start on the section that the current page belongs to
+  const here = currentPage();
+  let at = 0;
+  toc.forEach((t, i) => { if (t.page && t.page <= here) at = i; });
+  markToc(at);
+}
+
+function tocGo(i) {
+  $('toc').classList.remove('open');
+  if (toc[i].page) goto(toc[i].page, toc[i].y);
+}
+
+function tocKey(e) {
+  const k = e.key;
+  e.preventDefault();
+  if (k === 'j' || k === 'ArrowDown') markToc(state.tocAt + 1);
+  else if (k === 'k' || k === 'ArrowUp') markToc(state.tocAt - 1);
+  else if (k === 'g') markToc(0);
+  else if (k === 'G') markToc(toc.length - 1);
+  else if (k === 'Enter') tocGo(state.tocAt);
+  else if (k === 'Escape' || k === 't') $('toc').classList.remove('open');
+}
+
+function handleKey(e) {
+  const k = e.key, lower = k.toLowerCase();
+  if (k === 'Shift' || k === 'CapsLock' || k === 'AltGraph') return;
+
+  // a number typed first is a page for G / gg and a repeat count for the moves
+  if (/^[0-9]$/.test(k) && (state.count || k !== '0')) {
+    e.preventDefault();
+    state.count += k;
+    hint(state.count + ' …');
+    return;
+  }
+  if (k === 'g' && state.pending !== 'g') {
+    e.preventDefault();
+    state.pending = 'g';
+    hint(state.count + 'g …');
+    return;
+  }
+  const gg = state.pending === 'g' && k === 'g';
+  const n = parseInt(state.count, 10) || 0;
+  if (state.pending || state.count) hint('');
+  state.pending = '';
+  state.count = '';
+
+  if (gg || k === 'G') {
+    e.preventDefault();
+    if (state.mode !== 'normal') return;
+    if (n) goto(n);
+    else if (gg) scrollTop();
+    else scrollBottom();
+    syncCursor();
+    return;
+  }
+
+  if (state.mode !== 'normal') { visualKey(e, n || 1); return; }
+
+  if (Object.hasOwn(motions, k)) {
+    e.preventDefault();
+    if (!moveCursor(k, n || 1)) {
+      const d = 72 * (n || 1);
+      if (k === 'j' || k === 'k') window.scrollBy(0, k === 'j' ? d : -d);
+      else if (k === 'h' || k === 'l') window.scrollBy(k === 'l' ? d : -d, 0);
+    }
+    return;
+  }
+  switch (k) {
+    case 'V': e.preventDefault(); startVisual('vline'); return;
+    case 'C': e.preventDefault(); toggleHl(); return;
+    case 'N': e.preventDefault(); if (state.find) stepFind(-1); else stepAnnot(-1); return;
+    case '/': e.preventDefault(); openFind(); return;
+    case '?': e.preventDefault(); toggleHelp(); return;
+  }
+  switch (lower) {
+    case 'a':
+      e.preventDefault();
+      if (!addFromSelection()) hint('select some text first');
+      return;
+    case 's':
+      e.preventDefault();
+      { const a = addFromSelection();
+        if (a) openEditor(a.id);
+        else if (state.sel) openEditor(state.sel);
+        else hint('select text or click a highlight'); }
+      return;
+    case 'r': e.preventDefault(); setRectMode(!state.rectMode); return;
+    case 'd': case 'delete': e.preventDefault(); removeSelected(); return;
+    case 'u':
+      e.preventDefault();
+      { const a = state.undo.pop();
+        if (a) { state.annots.push(a); state.sel = a.id; redraw(); save(); } }
+      return;
+    case 'c': e.preventDefault(); toggleSide(); return;
+    case 'n': e.preventDefault(); if (state.find) stepFind(1); else stepAnnot(1); return;
+    case 't': e.preventDefault(); toggleToc(); return;
+    case 'p': e.preventDefault(); stepAnnot(-1); return;
+    case 'v': e.preventDefault(); startVisual('visual'); return;
+    case 'escape':
+      if (state.rectMode) setRectMode(false);
+      else if (state.find) clearFind();
+      else select(null);
+      return;
+    case '+': case '=': setScale(state.scale * 1.15); return;
+    case '-': setScale(state.scale / 1.15); return;
+  }
+}
+
 document.addEventListener('keydown', e => {
   if (e.ctrlKey && !e.altKey && ['+', '=', '-', '0'].includes(e.key)) {
     // take over the browser's own zoom keys
@@ -469,40 +1092,26 @@ document.addEventListener('keydown', e => {
     exportPdf();
     return;
   }
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.target.matches('textarea, input, select')) return;
-  const k = e.key.toLowerCase();
-  if (k === 'a') {
+  if (e.ctrlKey && !e.altKey && !e.metaKey && ['d', 'u'].includes(e.key.toLowerCase())) {
     e.preventDefault();
-    if (!addFromSelection()) hint('select some text first');
-  } else if (k === 's') {
-    e.preventDefault();
-    const a = addFromSelection();
-    if (a) openEditor(a.id);
-    else if (state.sel) openEditor(state.sel);
-    else hint('select text or click a highlight');
-  } else if (k === 'r') {
-    e.preventDefault();
-    setRectMode(!state.rectMode);
-  } else if (k === 'd' || k === 'delete') {
-    e.preventDefault();
-    removeSelected();
-  } else if (k === 'u') {
-    const a = state.undo.pop();
-    if (a) { state.annots.push(a); state.sel = a.id; redraw(); save(); }
-  } else if (k === 'escape') {
-    if (state.rectMode) setRectMode(false);
-    select(null);
-  } else if (k === '+' || k === '=') {
-    setScale(state.scale * 1.15);
-  } else if (k === '-') {
-    setScale(state.scale / 1.15);
+    scrollByPx((e.key.toLowerCase() === 'd' ? 1 : -1) * window.innerHeight / 2);
+    syncCursor();
+    return;
   }
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if ($('help').classList.contains('open')) {
+    if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); toggleHelp(); }
+    return;
+  }
+  if ($('toc').classList.contains('open')) { tocKey(e); return; }
+  handleKey(e);
 });
 
 // clicking a highlight selects it
 document.addEventListener('click', e => {
-  if (e.target.closest('#side, #editor, #bar, #foot')) return;
+  if (e.target.closest('#side, #editor, #bar, #foot, #help, #toc')) return;
+  if (state.mode !== 'normal') exitVisual();
   if (state.skipClick || state.rectMode) return;
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed) return;
@@ -510,12 +1119,14 @@ document.addEventListener('click', e => {
   if (!pg) { select(null); return; }
   const box = pg.getBoundingClientRect();
   const p = +pg.dataset.page, x = (e.clientX - box.left) / state.scale, y = (e.clientY - box.top) / state.scale;
-  const hit = state.annots.find(a => a.rects.some(r => r.p === p && x >= r.x - 1 && x <= r.x + r.w + 1
+  const i = wordAtPoint(p, x, y);
+  if (i >= 0) { state.cursor = { p, i, o: 0 }; state.wantX = null; drawCursor(); }
+  const hit = !document.body.classList.contains('no-hl') && state.annots.find(a => a.rects.some(r => r.p === p && x >= r.x - 1 && x <= r.x + r.w + 1
                                                              && y >= r.y - 1 && y <= r.y + r.h + 1));
   select(hit ? hit.id : null);
 });
 document.addEventListener('dblclick', e => {
-  if (e.target.closest('#side, #editor, #bar, #foot')) return;
+  if (e.target.closest('#side, #editor, #bar, #foot, #help, #toc')) return;
   if (state.sel && window.getSelection().isCollapsed) openEditor(state.sel);
 });
 
@@ -525,33 +1136,13 @@ $('pno').addEventListener('keydown', e => { if (e.key === 'Enter') { goto(parseI
 $('zin').addEventListener('click', () => setScale(state.scale * 1.15));
 $('zout').addEventListener('click', () => setScale(state.scale / 1.15));
 
-const outlineItems = [];
-try {
-  const walk = (items, depth) => {
-    for (const it of items || []) {
-      outlineItems.push(it);
-      const o = document.createElement('option');
-      o.value = outlineItems.length - 1;
-      o.textContent = '  '.repeat(depth) + it.title;
-      $('outline').appendChild(o);
-      if (depth < 1) walk(it.items, depth + 1);
-    }
-  };
-  walk(await pdf.getOutline(), 0);
-} catch {}
-$('outline').addEventListener('change', async () => {
-  const it = outlineItems[$('outline').value];
-  $('outline').value = '';
-  $('outline').blur();
-  if (!it) return;
-  try {
-    const dest = typeof it.dest === 'string' ? await pdf.getDestination(it.dest) : it.dest;
-    goto(await pdf.getPageIndex(dest[0]) + 1);
-  } catch {}
-});
+$('tocbtn').addEventListener('click', () => { $('tocbtn').blur(); toggleToc(); });
+loadToc();
 
 // ---------- start ----------
 
+if (store.get('noSide', false)) document.body.classList.add('no-side');
+setMode('normal');
 applyScale();
 try {
   const r = await fetch('/api/annotations');
