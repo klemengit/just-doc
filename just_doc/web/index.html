@@ -9,6 +9,7 @@
   body.no-side { --side: 0px; }
   body.no-side #side { display: none; }
   body.no-hl .pg .hl div:not(.on) { display: none; }
+  body.single .pg:not(.show) { display: none; }
   html, body { margin: 0; background: #525659; font: 14px/1.4 system-ui, sans-serif; color: #222; }
   #bar { position: fixed; top: 0; left: 0; right: var(--side); height: var(--bar); z-index: 20;
          background: #2b2d30; color: #ddd; display: flex; align-items: center; gap: 10px; padding: 0 12px;
@@ -99,7 +100,7 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
@@ -125,6 +126,8 @@
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
     <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
+    <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>previous / next page</td></tr>
+    <tr><td><kbd>P</kbd></td><td>show one page at a time, fitted to the window; <kbd>P</kbd> again goes back</td></tr>
     <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
     <tr class="sub"><td>the keys above</td><td>extend the selection</td></tr>
     <tr class="sub"><td><kbd>o</kbd></td><td>move the other end of the selection</td></tr>
@@ -149,7 +152,7 @@ const store = {
 };
 
 const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
-                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0 };
+                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0 };
 const dpr = window.devicePixelRatio || 1;
 const pagesEl = $('pages');
 const pgs = [];        // 1-based: page element
@@ -223,6 +226,7 @@ function unloadPage(i) {
 }
 
 function currentPage(clientY = window.innerHeight * 0.35) {
+  if (state.single) return state.single;
   const y = window.scrollY + clientY;
   let lo = 1, hi = pdf.numPages;
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pgs[m].offsetTop <= y) lo = m; else hi = m - 1; }
@@ -246,8 +250,49 @@ window.addEventListener('scroll', () => {
 
 function goto(p, yPt = 0) {
   p = Math.min(pdf.numPages, Math.max(1, p | 0));
-  window.scrollTo(0, pgs[p].offsetTop + yPt * state.scale - (yPt ? 160 : 50));
+  if (state.single) {
+    showSingle(p);
+    window.scrollTo(0, yPt ? pgs[p].offsetTop + yPt * state.scale - 160 : 0);
+  } else window.scrollTo(0, pgs[p].offsetTop + yPt * state.scale - (yPt ? 160 : 50));
   updateVisible();
+}
+
+// ---------- single page view: one page at a time, the others are hidden ----------
+
+function showSingle(p) {
+  if (state.single) pgs[state.single].classList.remove('show');
+  state.single = p;
+  pgs[p].classList.add('show');
+}
+
+// fit: zoom so that the whole page is in the window; the zoom from before comes back on leaving
+function setSingle(on, fit = true) {
+  const p = currentPage();
+  if (on) {
+    document.body.classList.add('single');
+    showSingle(p);
+    if (fit) {
+      state.scaleBefore = state.scale;
+      store.set('scaleBefore', state.scale);
+      const width = window.innerWidth - $('side').offsetWidth - 24, height = window.innerHeight - $('bar').offsetHeight - 90;
+      setScale(Math.min(width / base.width, height / base.height));
+    }
+    window.scrollTo(0, 0);
+  } else {
+    pgs[p].classList.remove('show');
+    state.single = 0;
+    document.body.classList.remove('single');
+    if (state.scaleBefore) setScale(state.scaleBefore);
+    goto(p);
+  }
+  store.set('single', on);
+  setMode(state.mode);
+  updateVisible();
+}
+
+function pageStep(dir) {
+  const p = currentPage() + dir;
+  if (p >= 1 && p <= pdf.numPages) goto(p);
 }
 
 // Zoom keeps the height cy of the window fixed and centres the page horizontally in the
@@ -547,6 +592,7 @@ const KEYS_VISUAL = '<kbd>h</kbd>/<kbd>l</kbd> character &nbsp;<kbd>w</kbd>/<kbd
 function setMode(m) {
   state.mode = m;
   $('mode').textContent = (m === 'visual' ? 'visual' : m === 'vline' ? 'v-line' : 'normal')
+                        + (state.single ? ' · single page' : '')
                         + (document.body.classList.contains('no-hl') ? ' · highlights hidden' : '');
   $('keys').innerHTML = m === 'normal' ? KEYS_NORMAL : KEYS_VISUAL;
 }
@@ -559,8 +605,8 @@ function toggleSide() {
 function toggleHl() { document.body.classList.toggle('no-hl'); setMode(state.mode); }
 function toggleHelp() { $('help').classList.toggle('open'); }
 function scrollByPx(px) { window.scrollBy(0, px); }
-function scrollTop() { window.scrollTo(0, 0); }
-function scrollBottom() { window.scrollTo(0, pagesEl.scrollHeight); }
+function scrollTop() { if (state.single) goto(1); else window.scrollTo(0, 0); }
+function scrollBottom() { if (state.single) goto(pdf.numPages); else window.scrollTo(0, pagesEl.scrollHeight); }
 
 // step to the next (dir 1) or previous (dir -1) comment, wrapping around;
 // without a selected comment it starts from the current page
@@ -635,6 +681,7 @@ function charX(pos) {
 
 // the nearest page in the direction dir that has its text loaded
 function nearPage(p, dir) {
+  if (state.single) return 0;
   for (let q = p + dir; q >= 1 && q <= pdf.numPages && Math.abs(q - p) <= 2; q += dir) if (wordsForPage(q).length) return q;
   return 0;
 }
@@ -690,7 +737,7 @@ const motions = {
 // true when the word of the position is on the screen
 function seen(pos) {
   const w = wordAt(pos);
-  if (!w) return false;
+  if (!w || (state.single && pos.p !== state.single)) return false;
   const y = pgs[pos.p].getBoundingClientRect().top + w.y * state.scale;
   return y > $('bar').offsetHeight + 8 && y < window.innerHeight - $('foot').offsetHeight - 8;
 }
@@ -741,13 +788,29 @@ function moveCursor(key, n) {
   if (key !== 'j' && key !== 'k') state.wantX = null;
   for (let i = 0; i < n; i++) {
     const t = motions[key](state.cursor);
-    if (!t) break;
+    if (!t) {
+      if (state.single && state.mode === 'normal' && (key === 'j' || key === 'k')) { turnPage(key === 'j' ? 1 : -1); return true; }
+      break;
+    }
     state.cursor = t;
   }
   if (state.mode !== 'normal') applyVisual();
   showCursor();
   drawCursor();
   return true;
+}
+
+// single page view: j on the last line and k on the first line go to the next / previous page
+function turnPage(dir) {
+  const p = state.single + dir;
+  if (p < 1 || p > pdf.numPages) return;
+  goto(p);
+  if (dir < 0) window.scrollTo(0, document.documentElement.scrollHeight);
+  const ws = wordsForPage(p);
+  if (!ws.length) return;
+  state.cursor = { p, i: dir > 0 ? 0 : lineSpan({ p, i: ws.length - 1 })[0], o: 0 };
+  state.wantX = null;
+  drawCursor();
 }
 
 // the word at a point of a page, in points; used to put the cursor where the mouse clicked
@@ -892,7 +955,7 @@ function showHit() {
   const f = state.find, hit = f.hits[f.cur];
   $('findinfo').textContent = `/${f.q}  ${f.cur + 1} of ${f.hits.length}`;
   f.jump = true;
-  if (!rendered[hit.p] || !rendered[hit.p].tlReady) goto(hit.p);
+  if ((state.single && state.single !== hit.p) || !rendered[hit.p] || !rendered[hit.p].tlReady) goto(hit.p);
   paintFind();
 }
 
@@ -1050,6 +1113,11 @@ function handleKey(e) {
   switch (k) {
     case 'V': e.preventDefault(); startVisual('vline'); return;
     case 'C': e.preventDefault(); toggleHl(); return;
+    case 'P': e.preventDefault(); setSingle(!state.single); return;
+    case 'ArrowRight': e.preventDefault(); pageStep(1); return;
+    case 'ArrowLeft': e.preventDefault(); pageStep(-1); return;
+    case 'PageDown': if (state.single) { e.preventDefault(); pageStep(1); } return;
+    case 'PageUp': if (state.single) { e.preventDefault(); pageStep(-1); } return;
     case 'N': e.preventDefault(); if (state.find) stepFind(-1); else stepAnnot(-1); return;
     case '/': e.preventDefault(); openFind(); return;
     case '?': e.preventDefault(); toggleHelp(); return;
@@ -1162,6 +1230,7 @@ try {
 }
 redraw();
 goto(store.get('page', 1));
+if (store.get('single', false)) { state.scaleBefore = store.get('scaleBefore', 0); setSingle(true, false); }
 window.__ready = true;
 </script>
 </body>

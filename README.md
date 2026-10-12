@@ -42,6 +42,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `h` `j` `k` `l`, `w` `b` `e`, `0` `$` | move the cursor (see below); the page follows it |
 | `gg` / `G` | go to the top / bottom of the document; with a number first (`12G`) go to that page |
 | `Ctrl` `d` / `Ctrl` `u` | half a page down / up |
+| `←` / `→` | go to the previous / next page |
+| `P` | single page view: show one page at a time, fitted to the window; `P` again goes back to the continuous view and the zoom from before |
 | `v` / `V` | start a visual / visual line selection (see below) |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
 | `Ctrl` `S` | export a copy of the PDF with the comments inside |
@@ -70,7 +72,10 @@ lines. The same keys then extend the selection, also onto the next page, and
 `o` switches to its other end. Press `a` to highlight the selection or `s` to
 highlight and comment on it. `Esc` cancels.
 
-`c` remembers its state between runs.
+`c` and `P` remember their state between runs.
+
+In the single page view, `j` on the last line and `k` on the first line turn
+the page, and so do `PageDown` and `PageUp`. A selection stays on its page.
 
 ### Search
 
