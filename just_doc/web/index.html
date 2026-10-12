@@ -470,7 +470,7 @@ document.addEventListener('mouseup', () => {
   state.sel = a.id;
   redraw();
   save();
-  openEditor(a.id);
+  openEditor(a.id, true);
 });
 
 function addFromSelection() {
@@ -486,10 +486,12 @@ function addFromSelection() {
   return a;
 }
 
-function openEditor(id) {
+// fresh: the highlight was made together with this comment, so Esc removes it again
+function openEditor(id, fresh = false) {
   const a = state.annots.find(x => x.id === id);
   if (!a) return;
   state.editing = id;
+  state.fresh = fresh;
   select(id);
   const last = a.rects[a.rects.length - 1];
   const box = pgs[last.p].getBoundingClientRect();
@@ -511,6 +513,12 @@ function closeEditor(commit) {
   state.editing = null;
   $('editor').style.display = 'none';
   if (commit && a) { a.comment = $('etext').value.trim(); redraw(); save(); }
+  else if (a && state.fresh) {
+    state.annots.splice(state.annots.indexOf(a), 1);
+    state.sel = null;
+    redraw();
+    save();
+  }
   $('etext').blur();
 }
 
@@ -807,7 +815,7 @@ function visualKey(e, n) {
     case 's': e.preventDefault(); {
       const a = addFromSelection();
       exitVisual();
-      if (a) openEditor(a.id); else hint('nothing selected');
+      if (a) openEditor(a.id, true); else hint('nothing selected');
     } return;
   }
 }
@@ -1054,7 +1062,7 @@ function handleKey(e) {
     case 's':
       e.preventDefault();
       { const a = addFromSelection();
-        if (a) openEditor(a.id);
+        if (a) openEditor(a.id, true);
         else if (state.sel) openEditor(state.sel);
         else hint('select text or click a highlight'); }
       return;
