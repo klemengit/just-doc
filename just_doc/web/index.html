@@ -40,11 +40,16 @@
   .pg .hl div.box { background: rgba(255, 179, 71, .16); border: 2px solid #f08000; box-sizing: border-box; }
   .pg .hl div.strike { background: linear-gradient(transparent 44%, #d00000 44%, #d00000 56%, transparent 56%); border-radius: 0; }
   .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
+  .pg .lk { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+  .pg .lk div { position: absolute; box-sizing: border-box; background: rgba(0, 90, 255, .07);
+                border-bottom: 2px solid rgba(0, 90, 255, .55); border-radius: 2px 2px 0 0; }
+  body.no-hl .pg .lk { display: none; }
   .pg .textLayer { z-index: 2; }
   #cur { position: absolute; z-index: 3; background: rgba(0, 90, 255, .32); outline: 1px solid #0050d0;
          border-radius: 1px; pointer-events: none; }
   .pg .draw { position: absolute; z-index: 3; border: 2px dashed #d00000; background: rgba(208, 0, 0, .08);
               box-sizing: border-box; pointer-events: none; }
+  body.onlink .pg, body.onlink .textLayer span { cursor: pointer !important; }
   body.rectmode, body.rectmode .pg, body.rectmode .textLayer span { cursor: crosshair !important; user-select: none; }
   .pg .num { position: absolute; right: -4px; top: 0; transform: translateX(100%); color: #bbb; font-size: 12px; }
   #side { position: fixed; top: 0; right: 0; bottom: 0; width: var(--side); background: #f4f4f2;
@@ -102,7 +107,7 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>Enter</kbd> follow link &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
@@ -117,6 +122,8 @@
     <tr><td><kbd>c</kbd></td><td>hide or show the comment list</td></tr>
     <tr><td><kbd>C</kbd></td><td>hide or show the highlights on the page</td></tr>
     <tr><td><kbd>n</kbd> / <kbd>p</kbd></td><td>next / previous comment</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>follow the link under the cursor; <kbd>Tab</kbd> moves the cursor to the next link</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>o</kbd> / <kbd>i</kbd></td><td>jump back to where you were / forward again</td></tr>
     <tr><td><kbd>/</kbd></td><td>search the whole PDF; <kbd>Enter</kbd> starts it</td></tr>
     <tr class="sub"><td><kbd>n</kbd> / <kbd>N</kbd></td><td>next / previous match, while a search is active</td></tr>
     <tr class="sub"><td><kbd>Esc</kbd></td><td>end the search</td></tr>
@@ -154,11 +161,12 @@ const store = {
 };
 
 const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
-                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0, cursorTo: null };
+                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0, cursorTo: null, back: [], fwd: [] };
 const dpr = window.devicePixelRatio || 1;
 const pagesEl = $('pages');
 const pgs = [];        // 1-based: page element
 const rendered = {};   // page number -> {canvas, tlDiv, tl, task, scale, pending}
+const links = {};      // page number -> links of the page, positions in points from the top-left corner
 const wordCache = {};  // page number -> word list, for visual mode; dropped when the page is unloaded
 let zoomTimer = 0;
 
@@ -192,6 +200,25 @@ async function renderPage(i) {
   const want = rec.pending = state.scale;
   const page = await pdf.getPage(i);
   if (rendered[i] !== rec || rec.pending !== want) return;
+  if (!links[i]) {
+    links[i] = [];
+    const flat = page.getViewport({ scale: 1 });
+    page.getAnnotations().then(list => {
+      links[i] = list.filter(a => a.subtype === 'Link' && (a.dest || a.url)).map(a => {
+        const [x1, y1, x2, y2] = flat.convertToViewportRectangle(a.rect);
+        return { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1), dest: a.dest, url: a.url };
+      });
+      // links are marked with a blue underline; sizes in percent follow the zoom by themselves
+      const layer = document.createElement('div');
+      layer.className = 'lk';
+      for (const l of links[i]) {
+        const d = document.createElement('div');
+        d.style.cssText = `left:${l.x / base.width * 100}%;top:${l.y / base.height * 100}%;width:${l.w / base.width * 100}%;height:${l.h / base.height * 100}%`;
+        layer.appendChild(d);
+      }
+      pgs[i].appendChild(layer);
+    }).catch(() => {});
+  }
   const vp = page.getViewport({ scale: want });
   const canvas = document.createElement('canvas');
   canvas.width = Math.floor(vp.width * dpr);
@@ -205,7 +232,7 @@ async function renderPage(i) {
     tlDiv.className = 'textLayer';
     pgs[i].appendChild(tlDiv);
     rec.tl = new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: tlDiv, viewport: vp });
-    rec.tl.render().then(() => { rec.tlReady = true; syncCursor(); if (state.cursorTo) cursorToAnnot(state.cursorTo); paintFind(); }).catch(() => {});
+    rec.tl.render().then(() => { rec.tlReady = true; syncCursor(); if (state.cursorTo) state.cursorTo(); paintFind(); }).catch(() => {});
   }
   try { await task.promise; } catch { canvas.width = 0; return; }
   if (rendered[i] !== rec || rec.pending !== want) { canvas.width = 0; return; }
@@ -396,7 +423,7 @@ function drawList() {
     const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
     c.textContent = a.comment || (a.kind === 'strike' ? '(delete)' : '(no comment)');
     it.append(p, q, c);
-    it.addEventListener('click', () => { select(a.id); goto(a.rects[0].p, a.rects[0].y); cursorToAnnot(a); });
+    it.addEventListener('click', () => { pushJump(); select(a.id); goto(a.rects[0].p, a.rects[0].y); cursorToAnnot(a); });
     it.addEventListener('dblclick', () => openEditor(a.id));
     list.appendChild(it);
   }
@@ -625,6 +652,7 @@ function stepAnnot(dir) {
     else { j = n - 1; while (j > 0 && state.annots[j].rects[0].p > cur) j--; }
   }
   const a = state.annots[j];
+  pushJump();
   select(a.id);
   goto(a.rects[0].p, a.rects[0].y);
   cursorToAnnot(a);
@@ -825,7 +853,7 @@ function cursorToAnnot(a) {
   state.cursorTo = null;
   if (a.kind === 'box' || state.mode !== 'normal') return;
   const r = a.rects[0], ws = wordsForPage(r.p);
-  if (!ws.length) { state.cursorTo = a; return; }
+  if (!ws.length) { state.cursorTo = () => cursorToAnnot(a); return; }
   const i = wordAtPoint(r.p, r.x + 0.5, r.y + r.h / 2);
   if (i < 0) return;
   const pos = { p: r.p, i, o: 0 };
@@ -977,6 +1005,7 @@ function showHit() {
   const f = state.find, hit = f.hits[f.cur];
   $('findinfo').textContent = `/${f.q}  ${f.cur + 1} of ${f.hits.length}`;
   f.jump = true;
+  pushJump();
   if ((state.single && state.single !== hit.p) || !rendered[hit.p] || !rendered[hit.p].tlReady) goto(hit.p);
   paintFind();
 }
@@ -1025,6 +1054,105 @@ $('q').addEventListener('keydown', e => {
 });
 $('q').addEventListener('blur', () => $('findbox').classList.remove('open'));
 
+// ---------- links and the jump list ----------
+
+// page and height on the page (points from the top) that a link or a contents entry points to
+async function resolveDest(d) {
+  const dest = typeof d === 'string' ? await pdf.getDestination(d) : d;
+  const page = Number.isInteger(dest[0]) ? dest[0] + 1 : await pdf.getPageIndex(dest[0]) + 1;
+  const kind = dest[1] && dest[1].name;
+  const top = kind === 'XYZ' ? dest[3] : kind === 'FitH' || kind === 'FitBH' ? dest[2] : null;
+  return { page, y: typeof top === 'number' ? Math.max(0, base.height - top) : 0 };
+}
+
+const linkAt = (p, x, y) => (links[p] || []).find(l => x >= l.x - 1 && x <= l.x + l.w + 1 && y >= l.y - 1 && y <= l.y + l.h + 1);
+
+// the link under the cursor
+function cursorLink() {
+  const w = seen(state.cursor) && wordAt(state.cursor);
+  return w ? linkAt(state.cursor.p, charX(state.cursor), w.y) : null;
+}
+
+async function followLink(l) {
+  if (l.url) { window.open(l.url, '_blank', 'noopener'); return; }
+  let d;
+  try { d = await resolveDest(l.dest); } catch { hint('the target of the link was not found'); return; }
+  pushJump();
+  goto(d.page, d.y);
+  cursorToY(d.page, d.y);
+  hint('Ctrl+o jumps back');
+}
+
+// puts the cursor on the first word at or below a height on a page
+function cursorToY(p, y) {
+  state.cursorTo = null;
+  if (state.mode !== 'normal') return;
+  const ws = wordsForPage(p);
+  if (!ws.length) { state.cursorTo = () => cursorToY(p, y); return; }
+  state.cursor = { p, i: Math.max(0, ws.findIndex(w => w.y + w.h / 2 >= y)), o: 0 };
+  state.wantX = null;
+  drawCursor();
+}
+
+// moves the cursor to the next (dir 1) or previous (dir -1) link on its page
+function stepLink(dir) {
+  if (!placeCursor()) return;
+  const c = state.cursor, w = wordAt(c), cx = charX(c);
+  const after = l => l.y + l.h / 2 > w.y + w.h / 2 || (Math.abs(l.y + l.h / 2 - w.y) <= w.h / 2 && l.x > cx);
+  const before = l => l.y + l.h / 2 < w.y - w.h / 2 || (Math.abs(l.y + l.h / 2 - w.y) <= w.h / 2 && l.x + l.w < cx);
+  const list = (links[c.p] || []).filter(dir > 0 ? after : before).sort((a, b) => (a.y - b.y || a.x - b.x) * dir);
+  for (const l of list) {
+    const i = wordAtPoint(c.p, l.x + Math.min(2, l.w / 2), l.y + l.h / 2);
+    if (i < 0) continue;
+    state.cursor = { p: c.p, i, o: 0 };
+    state.wantX = null;
+    showCursor();
+    drawCursor();
+    return;
+  }
+  hint(dir > 0 ? 'no more links on this page' : 'no earlier link on this page');
+}
+
+// the jump list: places left by a jump (link, search, contents, comment, gg, G), for Ctrl+o and Ctrl+i
+function here() {
+  const p = currentPage();
+  return { p, y: (window.scrollY - pgs[p].offsetTop) / state.scale, cursor: seen(state.cursor) ? { ...state.cursor } : null };
+}
+
+function pushJump() {
+  const h = here(), last = state.back[state.back.length - 1];
+  if (!last || last.p !== h.p || Math.abs(last.y - h.y) > 5) state.back.push(h);
+  if (state.back.length > 100) state.back.shift();
+  state.fwd.length = 0;
+}
+
+function jump(from, to) {
+  if (!from.length) { hint(from === state.back ? 'no earlier place' : 'no later place'); return; }
+  to.push(here());
+  const loc = from.pop();
+  goto(loc.p);
+  window.scrollTo(0, pgs[loc.p].offsetTop + loc.y * state.scale);
+  updateVisible();
+  const put = () => {
+    state.cursorTo = null;
+    if (!loc.cursor) return;
+    if (!wordsForPage(loc.p).length) { state.cursorTo = put; return; }
+    state.cursor = { ...loc.cursor };
+    drawCursor();
+  };
+  put();
+}
+
+document.addEventListener('mousemove', e => {
+  const pg = !drag && !state.rectMode && e.target.closest && e.target.closest('.pg');
+  let on = false;
+  if (pg) {
+    const box = pg.getBoundingClientRect();
+    on = !!linkAt(+pg.dataset.page, (e.clientX - box.left) / state.scale, (e.clientY - box.top) / state.scale);
+  }
+  document.body.classList.toggle('onlink', on);
+});
+
 // ---------- table of contents ----------
 
 const toc = [];   // {title, depth, dest, page, y, el}
@@ -1046,11 +1174,7 @@ async function loadToc() {
   });
   for (const t of toc) {
     try {
-      const dest = typeof t.dest === 'string' ? await pdf.getDestination(t.dest) : t.dest;
-      t.page = Number.isInteger(dest[0]) ? dest[0] + 1 : await pdf.getPageIndex(dest[0]) + 1;
-      const kind = dest[1] && dest[1].name;
-      const top = kind === 'XYZ' ? dest[3] : kind === 'FitH' || kind === 'FitBH' ? dest[2] : null;
-      if (typeof top === 'number') t.y = Math.max(0, base.height - top);
+      Object.assign(t, await resolveDest(t.dest));
       t.el.lastChild.textContent = t.page;
     } catch {}
   }
@@ -1074,7 +1198,7 @@ function toggleToc() {
 
 function tocGo(i) {
   $('toc').classList.remove('open');
-  if (toc[i].page) goto(toc[i].page, toc[i].y);
+  if (toc[i].page) { pushJump(); goto(toc[i].page, toc[i].y); cursorToY(toc[i].page, toc[i].y); }
 }
 
 function tocKey(e) {
@@ -1114,6 +1238,7 @@ function handleKey(e) {
   if (gg || k === 'G') {
     e.preventDefault();
     if (state.mode !== 'normal') return;
+    pushJump();
     if (n) goto(n);
     else if (gg) scrollTop();
     else scrollBottom();
@@ -1136,6 +1261,13 @@ function handleKey(e) {
     case 'V': e.preventDefault(); startVisual('vline'); return;
     case 'C': e.preventDefault(); toggleHl(); return;
     case 'P': e.preventDefault(); setSingle(!state.single); return;
+    case 'Enter': {
+      e.preventDefault();
+      const l = cursorLink();
+      if (l) followLink(l); else hint('no link under the cursor (Tab goes to the next link)');
+      return;
+    }
+    case 'Tab': e.preventDefault(); stepLink(e.shiftKey ? -1 : 1); return;
     case 'ArrowRight': e.preventDefault(); pageStep(1); return;
     case 'ArrowLeft': e.preventDefault(); pageStep(-1); return;
     case 'PageDown': if (state.single) { e.preventDefault(); pageStep(1); } return;
@@ -1197,6 +1329,12 @@ document.addEventListener('keydown', e => {
     syncCursor();
     return;
   }
+  if (e.ctrlKey && !e.altKey && !e.metaKey && ['o', 'i'].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+    if (state.mode !== 'normal' || $('help').classList.contains('open') || $('toc').classList.contains('open')) return;
+    if (e.key.toLowerCase() === 'o') jump(state.back, state.fwd); else jump(state.fwd, state.back);
+    return;
+  }
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if ($('help').classList.contains('open')) {
     if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); toggleHelp(); }
@@ -1219,6 +1357,8 @@ document.addEventListener('click', e => {
   const p = +pg.dataset.page, x = (e.clientX - box.left) / state.scale, y = (e.clientY - box.top) / state.scale;
   const i = wordAtPoint(p, x, y);
   if (i >= 0) { state.cursor = { p, i, o: 0 }; state.wantX = null; drawCursor(); }
+  const link = linkAt(p, x, y);
+  if (link) { followLink(link); return; }
   const hit = !document.body.classList.contains('no-hl') && state.annots.find(a => a.rects.some(r => r.p === p && x >= r.x - 1 && x <= r.x + r.w + 1
                                                              && y >= r.y - 1 && y <= r.y + r.h + 1));
   select(hit ? hit.id : null);

@@ -35,8 +35,10 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `d` | delete the selected highlight or rectangle (click it first) |
 | `u` | undo the last delete |
 | `c` | hide or show the comment list, so the page gets the full width |
-| `C` | hide or show the highlights on the page, to read the clean text; the selected one stays visible |
+| `C` | hide or show the highlights and the link marks on the page, to read the clean text; the selected one stays visible |
 | `n` / `p` | go to the next / previous comment, starting from the current page; the cursor goes to the start of its text |
+| `Enter` | follow the link under the cursor (a click on a link does the same); `Tab` / `Shift` `Tab` move the cursor to the next / previous link on the page |
+| `Ctrl` `o` / `Ctrl` `i` | jump back to where you were before a jump / forward again |
 | `/` | search the whole PDF: type the text, `Enter`; then `n` / `N` go to the next / previous match and `Esc` ends the search |
 | `t` | table of contents: `j` / `k` move, `Enter` goes there, `Esc` closes |
 | `h` `j` `k` `l`, `w` `b` `e`, `0` `$` | move the cursor (see below); the page follows it |
@@ -76,6 +78,15 @@ strike it through. `Esc` cancels.
 
 In the single page view, `j` on the last line and `k` on the first line turn
 the page, and so do `PageDown` and `PageUp`. A selection stays on its page.
+
+### Links and jumping back
+
+Links inside the PDF (a reference to an equation, a citation, an entry of the
+printed contents) are marked with a blue underline and work: put the cursor on one and press `Enter`, or click it.
+`Ctrl+o` then returns to the place of the link, with the cursor where it was.
+The same key returns from every other jump: a search, the contents panel,
+`n` / `p`, `gg`, `G`. `Ctrl+i` goes forward again. A web link opens in the
+browser.
 
 ### Search
 
