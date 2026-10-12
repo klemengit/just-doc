@@ -36,7 +36,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `u` | undo the last delete |
 | `c` | hide or show the comment list, so the page gets the full width |
 | `C` | hide or show the highlights on the page, to read the clean text; the selected one stays visible |
-| `n` / `p` | go to the next / previous comment, starting from the current page |
+| `n` / `p` | go to the next / previous comment, starting from the current page; the cursor goes to the start of its text |
 | `/` | search the whole PDF: type the text, `Enter`; then `n` / `N` go to the next / previous match and `Esc` ends the search |
 | `t` | table of contents: `j` / `k` move, `Enter` goes there, `Esc` closes |
 | `h` `j` `k` `l`, `w` `b` `e`, `0` `$` | move the cursor (see below); the page follows it |

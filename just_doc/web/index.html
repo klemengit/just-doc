@@ -154,7 +154,7 @@ const store = {
 };
 
 const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
-                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0 };
+                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0, cursorTo: null };
 const dpr = window.devicePixelRatio || 1;
 const pagesEl = $('pages');
 const pgs = [];        // 1-based: page element
@@ -205,7 +205,7 @@ async function renderPage(i) {
     tlDiv.className = 'textLayer';
     pgs[i].appendChild(tlDiv);
     rec.tl = new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: tlDiv, viewport: vp });
-    rec.tl.render().then(() => { rec.tlReady = true; syncCursor(); paintFind(); }).catch(() => {});
+    rec.tl.render().then(() => { rec.tlReady = true; syncCursor(); if (state.cursorTo) cursorToAnnot(state.cursorTo); paintFind(); }).catch(() => {});
   }
   try { await task.promise; } catch { canvas.width = 0; return; }
   if (rendered[i] !== rec || rec.pending !== want) { canvas.width = 0; return; }
@@ -396,7 +396,7 @@ function drawList() {
     const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
     c.textContent = a.comment || (a.kind === 'strike' ? '(delete)' : '(no comment)');
     it.append(p, q, c);
-    it.addEventListener('click', () => { select(a.id); goto(a.rects[0].p, a.rects[0].y); });
+    it.addEventListener('click', () => { select(a.id); goto(a.rects[0].p, a.rects[0].y); cursorToAnnot(a); });
     it.addEventListener('dblclick', () => openEditor(a.id));
     list.appendChild(it);
   }
@@ -627,6 +627,7 @@ function stepAnnot(dir) {
   const a = state.annots[j];
   select(a.id);
   goto(a.rects[0].p, a.rects[0].y);
+  cursorToAnnot(a);
   hint(`comment ${j + 1} of ${n}`);
 }
 
@@ -790,6 +791,7 @@ function moveCursor(key, n) {
   if (state.mode === 'normal') { if (!placeCursor()) return false; }
   else if (!wordAt(state.cursor)) { exitVisual(); return true; }
   if (key !== 'j' && key !== 'k') state.wantX = null;
+  state.cursorTo = null;
   for (let i = 0; i < n; i++) {
     const t = motions[key](state.cursor);
     if (!t) {
@@ -813,6 +815,22 @@ function turnPage(dir) {
   const ws = wordsForPage(p);
   if (!ws.length) return;
   state.cursor = { p, i: dir > 0 ? 0 : lineSpan({ p, i: ws.length - 1 })[0], o: 0 };
+  state.wantX = null;
+  drawCursor();
+}
+
+// puts the cursor on the first character of a comment's text, so v can start there;
+// when the text of that page is not loaded yet, it is done as soon as it is
+function cursorToAnnot(a) {
+  state.cursorTo = null;
+  if (a.kind === 'box' || state.mode !== 'normal') return;
+  const r = a.rects[0], ws = wordsForPage(r.p);
+  if (!ws.length) { state.cursorTo = a; return; }
+  const i = wordAtPoint(r.p, r.x + 0.5, r.y + r.h / 2);
+  if (i < 0) return;
+  const pos = { p: r.p, i, o: 0 };
+  while (pos.o < ws[i].n - 1 && charX(pos) < r.x) pos.o++;
+  state.cursor = pos;
   state.wantX = null;
   drawCursor();
 }
