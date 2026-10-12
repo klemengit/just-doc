@@ -84,6 +84,9 @@ def export(doc):
             else:
                 annot = Highlight(rect=bounds, quad_points=ArrayObject(FloatObject(round(v, 2)) for v in quads),
                                   highlight_color="ffb347" if a["comment"] else "ffe45c")
+                if a.get("kind") == "strike":
+                    annot[NameObject("/Subtype")] = NameObject("/StrikeOut")
+                    annot[NameObject("/C")] = ArrayObject(FloatObject(v) for v in (0.82, 0.0, 0.0))
             annot[NameObject("/T")] = author
             if a["comment"] and k == 0:
                 annot[NameObject("/Contents")] = TextStringObject(a["comment"])
@@ -234,8 +237,8 @@ def read(doc, as_json):
         return
     for i, a in enumerate(annots, 1):
         where = f"p. {a['rects'][0]['p']}" + (f"  {a['source']}" if a["source"] else "")
-        kind = "area" if a.get("kind") == "box" else "text"
-        print(f"[{i}] {where}\n    {kind}:    {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}\n")
+        kind = {"box": "area", "strike": "delete"}.get(a.get("kind"), "text")
+        print(f"[{i}] {where}\n    {kind + ':':<8} {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}\n")
     print(f"{len(annots)} comment(s) in {comments_path(doc).name}")
 
 

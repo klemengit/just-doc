@@ -29,8 +29,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 
 | key | action |
 |---|---|
-| `a` | highlight the selected text |
-| `s` | highlight the selection and write a comment, or edit the comment of the selected highlight |
+| `a` | highlight the selection and write a comment, or edit the comment of the selected mark; `Enter` in an empty box leaves a plain highlight |
+| `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
 | `d` | delete the selected highlight or rectangle (click it first) |
 | `u` | undo the last delete |
@@ -69,8 +69,8 @@ puts the cursor on the clicked word.
 
 `v` starts a selection at the cursor; `V` does the same but selects whole
 lines. The same keys then extend the selection, also onto the next page, and
-`o` switches to its other end. Press `a` to highlight the selection or `s` to
-highlight and comment on it. `Esc` cancels.
+`o` switches to its other end. Press `a` to comment on the selection or `s` to
+strike it through. `Esc` cancels.
 
 `c` and `P` remember their state between runs.
 
@@ -89,12 +89,14 @@ is active, `n` and `N` step through the matches and not through the comments.
 `book.pdf` → `book.comments.json`, in the same folder, rewritten after every
 change. Each entry holds the selected `text`, the `comment`, and `rects`: page
 number `p` and position in PDF points measured from the top-left corner.
+An entry with `kind` `strike` is struck-through text that should be deleted,
+and `kind` `box` is a rectangle; an entry without `kind` is a highlight.
 
 ## Sharing the comments
 
 The comments are not stored in the PDF, so other viewers do not show them.
 `Ctrl+S` (or `--export`) writes `book.commented.pdf`: a copy of the PDF with
-every highlight and comment as an ordinary PDF annotation, readable in Okular,
+every highlight, strike-through and comment as an ordinary PDF annotation, readable in Okular,
 Evince, Acrobat and others. The original PDF is never changed. The JSON file
 stays the working copy; export again after adding comments.
 

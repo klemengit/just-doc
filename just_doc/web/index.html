@@ -38,6 +38,7 @@
   .pg .hl div { position: absolute; background: #ffe45c; border-radius: 2px; }
   .pg .hl div.c { background: #ffb347; }
   .pg .hl div.box { background: rgba(255, 179, 71, .16); border: 2px solid #f08000; box-sizing: border-box; }
+  .pg .hl div.strike { background: linear-gradient(transparent 44%, #d00000 44%, #d00000 56%, transparent 56%); border-radius: 0; }
   .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
   .pg .textLayer { z-index: 2; }
   #cur { position: absolute; z-index: 3; background: rgba(0, 90, 255, .32); outline: 1px solid #0050d0;
@@ -55,6 +56,7 @@
   .it .p { color: #777; font-size: 12px; }
   .it .q { color: #555; font-style: italic; display: -webkit-box; -webkit-line-clamp: 3;
            -webkit-box-orient: vertical; overflow: hidden; }
+  .it .q.strike { text-decoration: line-through; text-decoration-color: #d00000; }
   .it .c { margin-top: 4px; white-space: pre-wrap; font-weight: 600; }
   .it .c.none { color: #aaa; font-weight: normal; }
   #editor { position: fixed; z-index: 30; display: none; width: 380px; background: #fff; border: 2px solid #d00000;
@@ -100,15 +102,15 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move cursor &nbsp;<kbd>n</kbd>/<kbd>p</kbd> next/prev comment &nbsp;<kbd>←</kbd>/<kbd>→</kbd> page &nbsp;<kbd>P</kbd> single page &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>c</kbd> list &nbsp;<kbd>C</kbd> highlights &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
 <div id="help"><div class="card">
   <h2>Keys — press <kbd>?</kbd> or <kbd>Esc</kbd> to close</h2>
   <table>
-    <tr><td><kbd>a</kbd></td><td>highlight the selected text</td></tr>
-    <tr><td><kbd>s</kbd></td><td>highlight and comment (or edit the selected highlight's comment)</td></tr>
+    <tr><td><kbd>a</kbd></td><td>comment on the selected text (or edit the comment of the selected mark)</td></tr>
+    <tr><td><kbd>s</kbd></td><td>strike through the selected text: it should be deleted</td></tr>
     <tr><td><kbd>r</kbd></td><td>draw a rectangle and comment (for a figure, equation or code)</td></tr>
     <tr><td><kbd>d</kbd></td><td>delete the selected highlight or rectangle</td></tr>
     <tr><td><kbd>u</kbd></td><td>undo the last delete</td></tr>
@@ -131,7 +133,7 @@
     <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
     <tr class="sub"><td>the keys above</td><td>extend the selection</td></tr>
     <tr class="sub"><td><kbd>o</kbd></td><td>move the other end of the selection</td></tr>
-    <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>highlight / comment the selection</td></tr>
+    <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>comment on / strike through the selection</td></tr>
     <tr><td><kbd>Ctrl</kbd> wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom around the pointer</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>export a copy of the PDF with the comments inside</td></tr>
     <tr><td><kbd>?</kbd></td><td>show or hide this list</td></tr>
@@ -374,7 +376,7 @@ function drawHighlights() {
   for (const a of state.annots) {
     for (const r of a.rects) {
       const d = document.createElement('div');
-      d.className = (a.kind === 'box' ? 'box ' : '') + (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
+      d.className = (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
       pgs[r.p].querySelector('.hl').appendChild(d);
     }
@@ -390,9 +392,9 @@ function drawList() {
     it.className = 'it' + (a.id === state.sel ? ' on' : '');
     it.dataset.id = a.id;
     const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p;
-    const q = document.createElement('div'); q.className = 'q'; q.textContent = (a.kind === 'box' ? '▭ ' : '') + (a.text ? '«' + a.text.replace(/\s+/g, ' ') + '»' : '(area without text)');
+    const q = document.createElement('div'); q.className = 'q' + (a.kind === 'strike' ? ' strike' : ''); q.textContent = (a.kind === 'box' ? '▭ ' : '') + (a.text ? '«' + a.text.replace(/\s+/g, ' ') + '»' : '(area without text)');
     const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
-    c.textContent = a.comment || '(no comment)';
+    c.textContent = a.comment || (a.kind === 'strike' ? '(delete)' : '(no comment)');
     it.append(p, q, c);
     it.addEventListener('click', () => { select(a.id); goto(a.rects[0].p, a.rects[0].y); });
     it.addEventListener('dblclick', () => openEditor(a.id));
@@ -518,11 +520,13 @@ document.addEventListener('mouseup', () => {
   openEditor(a.id, true);
 });
 
-function addFromSelection() {
+// kind 'strike' marks text that should be deleted; without a kind it is a highlight
+function addFromSelection(kind) {
   const cap = captureSelection();
   if (!cap) return null;
   const a = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: cap.text, rects: cap.rects,
               comment: '', created: new Date().toISOString() };
+  if (kind) a.kind = kind;
   state.annots.push(a);
   window.getSelection().removeAllRanges();
   state.sel = a.id;
@@ -587,7 +591,7 @@ function removeSelected() {
 
 const KEYS_NORMAL = $('keys').innerHTML;
 const KEYS_VISUAL = '<kbd>h</kbd>/<kbd>l</kbd> character &nbsp;<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd> word &nbsp;<kbd>j</kbd>/<kbd>k</kbd> line &nbsp;'
-                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>Esc</kbd> cancel';
+                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike through &nbsp;<kbd>Esc</kbd> cancel';
 
 function setMode(m) {
   state.mode = m;
@@ -874,12 +878,12 @@ function visualKey(e, n) {
       showCursor();
       drawCursor();
       return;
-    case 'a': e.preventDefault(); if (!addFromSelection()) hint('nothing selected'); exitVisual(); return;
-    case 's': e.preventDefault(); {
+    case 'a': e.preventDefault(); {
       const a = addFromSelection();
       exitVisual();
       if (a) openEditor(a.id, true); else hint('nothing selected');
     } return;
+    case 's': e.preventDefault(); if (!addFromSelection('strike')) hint('nothing selected'); exitVisual(); return;
   }
 }
 
@@ -1125,14 +1129,14 @@ function handleKey(e) {
   switch (lower) {
     case 'a':
       e.preventDefault();
-      if (!addFromSelection()) hint('select some text first');
-      return;
-    case 's':
-      e.preventDefault();
       { const a = addFromSelection();
         if (a) openEditor(a.id, true);
         else if (state.sel) openEditor(state.sel);
-        else hint('select text or click a highlight'); }
+        else hint('select text first (v), or go to a comment (n)'); }
+      return;
+    case 's':
+      e.preventDefault();
+      if (!addFromSelection('strike')) hint('select text first (v)');
       return;
     case 'r': e.preventDefault(); setRectMode(!state.rectMode); return;
     case 'd': case 'delete': e.preventDefault(); removeSelected(); return;
