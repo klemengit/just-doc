@@ -37,9 +37,9 @@ If `book.synctex.gz` is next to the PDF (compile with `-synctex=1`), `--read`
 adds the `.tex` file and line for each comment:
 
 ```
-[1] p. 37  /path/vsebina/poglavje_02.tex:1228
-    text:    ničle poiščemo z zajamčeno konvergentnim postopkom
-    comment: ni ok beseda
+[1] p. 37  /path/chapters/chapter_02.tex:1228
+    text:    the roots are found with a method that always converges
+    comment: too strong, say when it converges
 ```
 
 Positions refer to the PDF as it was when you commented. Recompiling moves the
