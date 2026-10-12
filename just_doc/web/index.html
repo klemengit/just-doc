@@ -32,8 +32,12 @@
   .pg .hl { position: absolute; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: multiply; }
   .pg .hl div { position: absolute; background: #ffe45c; border-radius: 2px; }
   .pg .hl div.c { background: #ffb347; }
+  .pg .hl div.box { background: rgba(255, 179, 71, .16); border: 2px solid #f08000; box-sizing: border-box; }
   .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
   .pg .textLayer { z-index: 2; }
+  .pg .draw { position: absolute; z-index: 3; border: 2px dashed #d00000; background: rgba(208, 0, 0, .08);
+              box-sizing: border-box; pointer-events: none; }
+  body.rectmode, body.rectmode .pg, body.rectmode .textLayer span { cursor: crosshair !important; user-select: none; }
   .pg .num { position: absolute; right: -4px; top: 0; transform: translateX(100%); color: #bbb; font-size: 12px; }
   #side { position: fixed; top: 0; right: 0; bottom: 0; width: var(--side); background: #f4f4f2;
           border-left: 1px solid #999; overflow-y: auto; z-index: 21; box-sizing: border-box; }
@@ -62,7 +66,7 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom &nbsp;<kbd>Ctrl</kbd>+<kbd>S</kbd> export PDF</span></div>
+<div id="foot"><span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>r</kbd> rectangle &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom &nbsp;<kbd>Ctrl</kbd>+<kbd>S</kbd> export PDF</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
 <div id="toast"></div>
 <div id="editor"><textarea id="etext" placeholder="comment …"></textarea>
@@ -250,7 +254,7 @@ function drawHighlights() {
   for (const a of state.annots) {
     for (const r of a.rects) {
       const d = document.createElement('div');
-      d.className = (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
+      d.className = (a.kind === 'box' ? 'box ' : '') + (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
       pgs[r.p].querySelector('.hl').appendChild(d);
     }
@@ -266,7 +270,7 @@ function drawList() {
     it.className = 'it' + (a.id === state.sel ? ' on' : '');
     it.dataset.id = a.id;
     const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p;
-    const q = document.createElement('div'); q.className = 'q'; q.textContent = '«' + a.text.replace(/\s+/g, ' ') + '»';
+    const q = document.createElement('div'); q.className = 'q'; q.textContent = (a.kind === 'box' ? '▭ ' : '') + (a.text ? '«' + a.text.replace(/\s+/g, ' ') + '»' : '(area without text)');
     const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
     c.textContent = a.comment || '(no comment)';
     it.append(p, q, c);
@@ -332,6 +336,67 @@ function captureSelection() {
   for (const r of rects) for (const k of ['x', 'y', 'w', 'h']) r[k] = Math.round(r[k] * 100) / 100;
   return { text, rects };
 }
+
+// ---------- rectangles: for figures, equations and code, where text cannot be selected ----------
+
+function setRectMode(on) {
+  state.rectMode = on;
+  document.body.classList.toggle('rectmode', on);
+  if (on) { window.getSelection().removeAllRanges(); hint('drag a rectangle (Esc cancels)'); }
+}
+
+// text of the page that lies inside the rectangle, so the comment can still be located in the source
+function textInside(pg, r) {
+  const box = pg.getBoundingClientRect();
+  const out = [];
+  for (const sp of pg.querySelectorAll('.textLayer span')) {
+    if (sp.children.length || !sp.textContent.trim()) continue;
+    const b = sp.getBoundingClientRect();
+    const cx = (b.left + b.width / 2 - box.left) / state.scale, cy = (b.top + b.height / 2 - box.top) / state.scale;
+    if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) out.push(sp.textContent);
+  }
+  return out.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+let drag = null;
+document.addEventListener('mousedown', e => {
+  if (!state.rectMode || e.button !== 0) return;
+  const pg = e.target.closest('.pg');
+  if (!pg) return;
+  e.preventDefault();
+  const el = document.createElement('div');
+  el.className = 'draw';
+  pg.appendChild(el);
+  drag = { pg, el, x0: e.clientX, y0: e.clientY };
+});
+document.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const box = drag.pg.getBoundingClientRect();
+  const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const x1 = cl(Math.min(drag.x0, e.clientX), box.left, box.right), x2 = cl(Math.max(drag.x0, e.clientX), box.left, box.right);
+  const y1 = cl(Math.min(drag.y0, e.clientY), box.top, box.bottom), y2 = cl(Math.max(drag.y0, e.clientY), box.top, box.bottom);
+  drag.r = { x: x1 - box.left, y: y1 - box.top, w: x2 - x1, h: y2 - y1 };
+  drag.el.style.cssText = `left:${drag.r.x}px;top:${drag.r.y}px;width:${drag.r.w}px;height:${drag.r.h}px`;
+});
+document.addEventListener('mouseup', () => {
+  if (!drag) return;
+  const { pg, el, r } = drag;
+  drag = null;
+  el.remove();
+  setRectMode(false);
+  state.skipClick = true;
+  setTimeout(() => state.skipClick = false, 0);
+  if (!r || r.w < 4 || r.h < 4) return;
+  const rect = { p: +pg.dataset.page };
+  for (const k of ['x', 'y', 'w', 'h']) rect[k] = Math.round(r[k] / state.scale * 100) / 100;
+  const a = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'box', text: textInside(pg, rect),
+              rects: [rect], comment: '', created: new Date().toISOString() };
+  state.annots.push(a);
+  state.sel = a.id;
+  redraw();
+  save();
+  openEditor(a.id);
+});
 
 function addFromSelection() {
   const cap = captureSelection();
@@ -414,6 +479,9 @@ document.addEventListener('keydown', e => {
     if (a) openEditor(a.id);
     else if (state.sel) openEditor(state.sel);
     else hint('select text or click a highlight');
+  } else if (k === 'r') {
+    e.preventDefault();
+    setRectMode(!state.rectMode);
   } else if (k === 'd' || k === 'delete') {
     e.preventDefault();
     removeSelected();
@@ -421,6 +489,7 @@ document.addEventListener('keydown', e => {
     const a = state.undo.pop();
     if (a) { state.annots.push(a); state.sel = a.id; redraw(); save(); }
   } else if (k === 'escape') {
+    if (state.rectMode) setRectMode(false);
     select(null);
   } else if (k === '+' || k === '=') {
     setScale(state.scale * 1.15);
@@ -432,6 +501,7 @@ document.addEventListener('keydown', e => {
 // clicking a highlight selects it
 document.addEventListener('click', e => {
   if (e.target.closest('#side, #editor, #bar, #foot')) return;
+  if (state.skipClick || state.rectMode) return;
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed) return;
   const pg = e.target.closest('.pg');

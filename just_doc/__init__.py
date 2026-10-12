@@ -54,7 +54,7 @@ def export(doc):
     """
     try:
         from pypdf import PdfReader, PdfWriter
-        from pypdf.annotations import Highlight
+        from pypdf.annotations import Highlight, Rectangle
         from pypdf.generic import ArrayObject, FloatObject, NameObject, TextStringObject
     except ImportError as exc:
         raise RuntimeError("export needs the pypdf package (it comes with 'uv tool install')") from exc
@@ -77,9 +77,13 @@ def export(doc):
                 quads += [x1, y1, x2, y1, x1, y2, x2, y2]
                 xs += [x1, x2]
                 ys += [y1, y2]
-            annot = Highlight(rect=(min(xs), min(ys), max(xs), max(ys)),
-                              quad_points=ArrayObject(FloatObject(round(v, 2)) for v in quads),
-                              highlight_color="ffb347" if a["comment"] else "ffe45c")
+            bounds = (min(xs), min(ys), max(xs), max(ys))
+            if a.get("kind") == "box":
+                annot = Rectangle(rect=bounds)
+                annot[NameObject("/C")] = ArrayObject(FloatObject(v) for v in (0.94, 0.5, 0.0))
+            else:
+                annot = Highlight(rect=bounds, quad_points=ArrayObject(FloatObject(round(v, 2)) for v in quads),
+                                  highlight_color="ffb347" if a["comment"] else "ffe45c")
             annot[NameObject("/T")] = author
             if a["comment"] and k == 0:
                 annot[NameObject("/Contents")] = TextStringObject(a["comment"])
@@ -200,13 +204,17 @@ def serve(doc, port, window):
     sys.exit("no free port found")
 
 
-def source_line(doc, rect):
-    """Map a highlight to ``file:line`` in the TeX source via SyncTeX, if available."""
+def source_line(doc, rect, centre=False):
+    """Map a highlight to ``file:line`` in the TeX source via SyncTeX, if available.
+
+    A text highlight is looked up at its start, a rectangle at its centre.
+    """
     if not shutil.which("synctex"):
         return None
     if not any(doc.with_suffix(ext).exists() for ext in (".synctex.gz", ".synctex")):
         return None
-    spot = f"{rect['p']}:{rect['x'] + 2:.2f}:{rect['y'] + rect['h'] / 2:.2f}:{doc.name}"
+    x = rect["x"] + (rect["w"] / 2 if centre else 2)
+    spot = f"{rect['p']}:{x:.2f}:{rect['y'] + rect['h'] / 2:.2f}:{doc.name}"
     res = subprocess.run(["synctex", "edit", "-o", spot], cwd=doc.parent, capture_output=True, text=True)
     name = line = None
     for row in res.stdout.splitlines():
@@ -220,13 +228,14 @@ def source_line(doc, rect):
 def read(doc, as_json):
     annots = load_comments(doc)["annots"]
     for a in annots:
-        a["source"] = source_line(doc, a["rects"][0])
+        a["source"] = source_line(doc, a["rects"][0], centre=a.get("kind") == "box")
     if as_json:
         print(json.dumps(annots, ensure_ascii=False, indent=1))
         return
     for i, a in enumerate(annots, 1):
         where = f"p. {a['rects'][0]['p']}" + (f"  {a['source']}" if a["source"] else "")
-        print(f"[{i}] {where}\n    text:    {a['text']}\n    comment: {a['comment'] or '(none)'}\n")
+        kind = "area" if a.get("kind") == "box" else "text"
+        print(f"[{i}] {where}\n    {kind}:    {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}\n")
     print(f"{len(annots)} comment(s) in {comments_path(doc).name}")
 
 

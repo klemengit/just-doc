@@ -31,7 +31,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 |---|---|
 | `a` | highlight the selected text |
 | `s` | highlight the selection and write a comment, or edit the comment of the selected highlight |
-| `d` | delete the selected highlight (click it first) |
+| `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
+| `d` | delete the selected highlight or rectangle (click it first) |
 | `u` | undo the last delete |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
 | `Ctrl` `S` | export a copy of the PDF with the comments inside |
