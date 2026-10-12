@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>docmark</title>
+<link rel="stylesheet" href="pdfjs/pdf_viewer.css">
+<style>
+  :root { --side: 340px; --bar: 40px; }
+  html, body { margin: 0; background: #525659; font: 14px/1.4 system-ui, sans-serif; color: #222; }
+  #bar { position: fixed; top: 0; left: 0; right: var(--side); height: var(--bar); z-index: 20;
+         background: #2b2d30; color: #ddd; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+         box-sizing: border-box; white-space: nowrap; overflow: hidden; }
+  #bar input, #bar select, #bar button { background: #3c3f41; color: #eee; border: 1px solid #555;
+         border-radius: 4px; padding: 2px 6px; font: inherit; }
+  #bar input { width: 52px; text-align: right; }
+  #bar select { max-width: 260px; }
+  #bar kbd { background: #555; border-radius: 3px; padding: 0 5px; color: #fff; font: inherit; }
+  #status { margin-left: auto; }
+  #status.err { color: #ff6b6b; font-weight: bold; }
+  #hint { color: #ffd166; }
+  #pages { margin: calc(var(--bar) + 12px) var(--side) 40px 0; display: flex; flex-direction: column;
+           align-items: center; gap: 12px; min-width: max-content; }
+  .pg { position: relative; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.5); flex: none; }
+  .pg canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .pg .hl { position: absolute; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: multiply; }
+  .pg .hl div { position: absolute; background: #ffe45c; border-radius: 2px; }
+  .pg .hl div.c { background: #ffb347; }
+  .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
+  .pg .textLayer { z-index: 2; }
+  .pg .num { position: absolute; right: -4px; top: 0; transform: translateX(100%); color: #bbb; font-size: 12px; }
+  #side { position: fixed; top: 0; right: 0; bottom: 0; width: var(--side); background: #f4f4f2;
+          border-left: 1px solid #999; overflow-y: auto; z-index: 21; box-sizing: border-box; }
+  #side h1 { font-size: 14px; margin: 0; padding: 10px 12px; background: #e4e4e0; position: sticky; top: 0; }
+  .it { padding: 8px 12px; border-bottom: 1px solid #ddd; cursor: pointer; }
+  .it:hover { background: #eaeae6; }
+  .it.on { background: #ffe9e0; box-shadow: inset 3px 0 0 #d00000; }
+  .it .p { color: #777; font-size: 12px; }
+  .it .q { color: #555; font-style: italic; display: -webkit-box; -webkit-line-clamp: 3;
+           -webkit-box-orient: vertical; overflow: hidden; }
+  .it .c { margin-top: 4px; white-space: pre-wrap; font-weight: 600; }
+  .it .c.none { color: #aaa; font-weight: normal; }
+  #editor { position: fixed; z-index: 30; display: none; width: 380px; background: #fff; border: 2px solid #d00000;
+            border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.4); padding: 6px; }
+  #editor textarea { width: 100%; height: 90px; box-sizing: border-box; border: 0; outline: 0; resize: vertical;
+            font: 14px/1.4 system-ui, sans-serif; }
+  #editor small { color: #888; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <span>p. <input id="pno" type="text" value="1"> / <span id="pcount">?</span></span>
+  <select id="outline"><option value="">contents …</option></select>
+  <button id="zout">−</button><span id="zval"></span><button id="zin">+</button>
+  <span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom</span>
+  <span id="hint"></span>
+  <span id="status">loading …</span>
+</div>
+<div id="pages"></div>
+<div id="side"><h1>Comments (<span id="count">0</span>)</h1><div id="list"></div></div>
+<div id="editor"><textarea id="etext" placeholder="comment …"></textarea>
+  <small>Enter saves · Shift+Enter new line · Esc cancels</small></div>
+
+<script type="module">
+import * as pdfjsLib from './pdfjs/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.mjs';
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null };
+const dpr = window.devicePixelRatio || 1;
+const pagesEl = $('pages');
+const pgs = [];        // 1-based: page element
+const rendered = {};   // page number -> {canvas, tlDiv, tl, task, scale, pending}
+let zoomTimer = 0;
+
+const pdf = await pdfjsLib.getDocument('/doc').promise;
+const base = (await pdf.getPage(1)).getViewport({ scale: 1 });
+$('pcount').textContent = pdf.numPages;
+try { document.title = (await (await fetch('/api/info')).json()).name + ' – docmark'; } catch {}
+
+for (let i = 1; i <= pdf.numPages; i++) {
+  const pg = document.createElement('div');
+  pg.className = 'pg';
+  pg.dataset.page = i;
+  pg.innerHTML = `<div class="hl"></div><div class="num">${i}</div>`;
+  pagesEl.appendChild(pg);
+  pgs[i] = pg;
+}
+
+function applyScale() {
+  for (let i = 1; i <= pdf.numPages; i++) {
+    pgs[i].style.width = base.width * state.scale + 'px';
+    pgs[i].style.height = base.height * state.scale + 'px';
+    pgs[i].style.setProperty('--scale-factor', state.scale);
+  }
+  $('zval').textContent = Math.round(state.scale * 100) + ' %';
+}
+
+async function renderPage(i) {
+  let rec = rendered[i];
+  if (rec && (rec.scale === state.scale || rec.pending === state.scale)) return;
+  if (!rec) rec = rendered[i] = {};
+  const want = rec.pending = state.scale;
+  const page = await pdf.getPage(i);
+  if (rendered[i] !== rec || rec.pending !== want) return;
+  const vp = page.getViewport({ scale: want });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.floor(vp.width * dpr);
+  canvas.height = Math.floor(vp.height * dpr);
+  try { rec.task?.cancel(); } catch {}
+  const task = rec.task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp,
+                                        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null });
+  if (!rec.tlDiv) {
+    // the text layer is sized through --scale-factor, so it is built once and follows the zoom
+    const tlDiv = rec.tlDiv = document.createElement('div');
+    tlDiv.className = 'textLayer';
+    pgs[i].appendChild(tlDiv);
+    rec.tl = new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: tlDiv, viewport: vp });
+    rec.tl.render().catch(() => {});
+  }
+  try { await task.promise; } catch { canvas.width = 0; return; }
+  if (rendered[i] !== rec || rec.pending !== want) { canvas.width = 0; return; }
+  // swap the sharp canvas in only when it is ready, so zooming never flashes white
+  if (rec.canvas) { rec.canvas.width = 0; rec.canvas.remove(); }
+  pgs[i].prepend(canvas);
+  rec.canvas = canvas;
+  rec.scale = want;
+}
+
+function unloadPage(i) {
+  const rec = rendered[i];
+  if (!rec) return;
+  try { rec.task?.cancel(); } catch {}
+  try { rec.tl?.cancel(); } catch {}
+  if (rec.canvas) { rec.canvas.width = 0; rec.canvas.remove(); }
+  rec.tlDiv?.remove();
+  delete rendered[i];
+}
+
+function currentPage(clientY = window.innerHeight * 0.35) {
+  const y = window.scrollY + clientY;
+  let lo = 1, hi = pdf.numPages;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pgs[m].offsetTop <= y) lo = m; else hi = m - 1; }
+  return lo;
+}
+
+function updateVisible() {
+  const cur = currentPage();
+  const keep = new Set();
+  for (let i = Math.max(1, cur - 2); i <= Math.min(pdf.numPages, cur + 3); i++) keep.add(i);
+  for (const k of Object.keys(rendered)) if (!keep.has(+k)) unloadPage(+k);
+  for (const i of keep) renderPage(i);
+  if (document.activeElement !== $('pno')) $('pno').value = cur;
+  store.set('page', cur);
+}
+let raf = 0;
+window.addEventListener('scroll', () => { if (!raf && !zoomTimer) raf = requestAnimationFrame(() => { raf = 0; updateVisible(); }); });
+
+function goto(p, yPt = 0) {
+  p = Math.min(pdf.numPages, Math.max(1, p | 0));
+  window.scrollTo(0, pgs[p].offsetTop + yPt * state.scale - (yPt ? 160 : 50));
+  updateVisible();
+}
+
+// Zoom keeps the point (cx, cy) of the window fixed. Pages are stretched at once and
+// redrawn sharp a moment after the last zoom step.
+function setScale(s, cx = (window.innerWidth - $('side').offsetWidth) / 2, cy = window.innerHeight / 2) {
+  s = Math.min(6, Math.max(0.4, s));
+  if (Math.abs(s - state.scale) < 1e-4) return;
+  const p = currentPage(cy);
+  const box = pgs[p].getBoundingClientRect();
+  const fx = (cx - box.left) / box.width, fy = (cy - box.top) / box.height;
+  state.scale = s;
+  store.set('scale', s);
+  applyScale();
+  drawHighlights();
+  const nb = pgs[p].getBoundingClientRect();
+  window.scrollBy(nb.left + fx * nb.width - cx, nb.top + fy * nb.height - cy);
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(() => { zoomTimer = 0; updateVisible(); }, 160);
+}
+window.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  setScale(state.scale * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+}, { passive: false });
+
+// ---------- annotations ----------
+
+function hint(msg) { $('hint').textContent = msg; clearTimeout(hint.t); hint.t = setTimeout(() => $('hint').textContent = '', 2500); }
+
+async function save() {
+  try {
+    const r = await fetch('/api/annotations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                             body: JSON.stringify({ annots: state.annots }) });
+    if (!r.ok) throw new Error(r.status);
+    $('status').className = '';
+    $('status').textContent = 'saved ✓';
+  } catch (e) {
+    $('status').className = 'err';
+    $('status').textContent = 'NOT SAVED – server is not responding';
+  }
+}
+
+function sortAnnots() {
+  state.annots.sort((a, b) => a.rects[0].p - b.rects[0].p || a.rects[0].y - b.rects[0].y || a.rects[0].x - b.rects[0].x);
+}
+
+function drawHighlights() {
+  for (let i = 1; i <= pdf.numPages; i++) pgs[i].querySelector('.hl').replaceChildren();
+  for (const a of state.annots) {
+    for (const r of a.rects) {
+      const d = document.createElement('div');
+      d.className = (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
+      d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
+      pgs[r.p].querySelector('.hl').appendChild(d);
+    }
+  }
+}
+
+function drawList() {
+  $('count').textContent = state.annots.length;
+  const list = $('list');
+  list.replaceChildren();
+  for (const a of state.annots) {
+    const it = document.createElement('div');
+    it.className = 'it' + (a.id === state.sel ? ' on' : '');
+    it.dataset.id = a.id;
+    const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p;
+    const q = document.createElement('div'); q.className = 'q'; q.textContent = '«' + a.text.replace(/\s+/g, ' ') + '»';
+    const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
+    c.textContent = a.comment || '(no comment)';
+    it.append(p, q, c);
+    it.addEventListener('click', () => { select(a.id); goto(a.rects[0].p, a.rects[0].y); });
+    it.addEventListener('dblclick', () => openEditor(a.id));
+    list.appendChild(it);
+  }
+}
+
+function redraw() { sortAnnots(); drawHighlights(); drawList(); }
+
+function select(id) {
+  state.sel = id;
+  drawHighlights();
+  for (const it of $('list').children) it.classList.toggle('on', it.dataset.id === id);
+  if (id) $('list').querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+}
+
+function captureSelection() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const range = sel.getRangeAt(0);
+  const rootNode = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer
+                                                                : range.commonAncestorContainer.parentNode;
+  const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+  const raw = [];
+  let text = '';
+  let lastTop = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!range.intersectsNode(n)) continue;
+    const pg = n.parentElement?.closest('.textLayer')?.closest('.pg');
+    if (!pg) continue;
+    const r = document.createRange();
+    r.selectNodeContents(n);
+    if (n === range.startContainer) r.setStart(n, range.startOffset);
+    if (n === range.endContainer) r.setEnd(n, range.endOffset);
+    const piece = r.toString();
+    if (!piece) continue;
+    const box = pg.getBoundingClientRect();
+    for (const cr of r.getClientRects()) {
+      if (cr.width < 0.5 || cr.height < 0.5) continue;
+      raw.push({ p: +pg.dataset.page, x: (cr.left - box.left) / state.scale, y: (cr.top - box.top) / state.scale,
+                 w: cr.width / state.scale, h: cr.height / state.scale });
+      const top = Math.round(cr.top);
+      if (lastTop !== null && Math.abs(top - lastTop) > 4 && text && !/\s$/.test(text)) text += ' ';
+      lastTop = top;
+    }
+    text += piece;
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  if (!raw.length || !text) return null;
+  // merge rectangles that lie on the same line
+  raw.sort((a, b) => a.p - b.p || a.y - b.y || a.x - b.x);
+  const rects = [];
+  for (const r of raw) {
+    const m = rects.find(q => q.p === r.p && Math.abs((q.y + q.h / 2) - (r.y + r.h / 2)) < Math.max(q.h, r.h) * 0.5
+                               && r.x <= q.x + q.w + 8 && r.x + r.w >= q.x - 8);
+    if (m) {
+      const x2 = Math.max(m.x + m.w, r.x + r.w), y2 = Math.max(m.y + m.h, r.y + r.h);
+      m.x = Math.min(m.x, r.x); m.y = Math.min(m.y, r.y); m.w = x2 - m.x; m.h = y2 - m.y;
+    } else rects.push({ ...r });
+  }
+  for (const r of rects) for (const k of ['x', 'y', 'w', 'h']) r[k] = Math.round(r[k] * 100) / 100;
+  return { text, rects };
+}
+
+function addFromSelection() {
+  const cap = captureSelection();
+  if (!cap) return null;
+  const a = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: cap.text, rects: cap.rects,
+              comment: '', created: new Date().toISOString() };
+  state.annots.push(a);
+  window.getSelection().removeAllRanges();
+  state.sel = a.id;
+  redraw();
+  save();
+  return a;
+}
+
+function openEditor(id) {
+  const a = state.annots.find(x => x.id === id);
+  if (!a) return;
+  state.editing = id;
+  select(id);
+  const last = a.rects[a.rects.length - 1];
+  const box = pgs[last.p].getBoundingClientRect();
+  const ed = $('editor');
+  ed.style.display = 'block';
+  let left = box.left + last.x * state.scale;
+  let top = box.top + (last.y + last.h) * state.scale + 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - 340 - 400));
+  if (top > window.innerHeight - 150 || top < 50) top = Math.max(60, window.innerHeight - 170);
+  ed.style.left = left + 'px';
+  ed.style.top = top + 'px';
+  $('etext').value = a.comment;
+  $('etext').focus();
+}
+
+function closeEditor(commit) {
+  if (!state.editing) return;
+  const a = state.annots.find(x => x.id === state.editing);
+  state.editing = null;
+  $('editor').style.display = 'none';
+  if (commit && a) { a.comment = $('etext').value.trim(); redraw(); save(); }
+  $('etext').blur();
+}
+
+$('etext').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
+});
+$('etext').addEventListener('blur', () => closeEditor(true));
+
+function removeSelected() {
+  const i = state.annots.findIndex(x => x.id === state.sel);
+  if (i < 0) { hint('click a highlight first'); return; }
+  state.undo.push(state.annots.splice(i, 1)[0]);
+  state.sel = null;
+  redraw();
+  save();
+  hint('deleted (u = undo)');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && !e.altKey && ['+', '=', '-', '0'].includes(e.key)) {
+    // take over the browser's own zoom keys
+    e.preventDefault();
+    setScale(e.key === '0' ? 1.5 : state.scale * (e.key === '-' ? 1 / 1.15 : 1.15));
+    return;
+  }
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.target.matches('textarea, input, select')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'a') {
+    e.preventDefault();
+    if (!addFromSelection()) hint('select some text first');
+  } else if (k === 's') {
+    e.preventDefault();
+    const a = addFromSelection();
+    if (a) openEditor(a.id);
+    else if (state.sel) openEditor(state.sel);
+    else hint('select text or click a highlight');
+  } else if (k === 'd' || k === 'delete') {
+    e.preventDefault();
+    removeSelected();
+  } else if (k === 'u') {
+    const a = state.undo.pop();
+    if (a) { state.annots.push(a); state.sel = a.id; redraw(); save(); }
+  } else if (k === 'escape') {
+    select(null);
+  } else if (k === '+' || k === '=') {
+    setScale(state.scale * 1.15);
+  } else if (k === '-') {
+    setScale(state.scale / 1.15);
+  }
+});
+
+// clicking a highlight selects it
+document.addEventListener('click', e => {
+  if (e.target.closest('#side, #editor, #bar')) return;
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  const pg = e.target.closest('.pg');
+  if (!pg) { select(null); return; }
+  const box = pg.getBoundingClientRect();
+  const p = +pg.dataset.page, x = (e.clientX - box.left) / state.scale, y = (e.clientY - box.top) / state.scale;
+  const hit = state.annots.find(a => a.rects.some(r => r.p === p && x >= r.x - 1 && x <= r.x + r.w + 1
+                                                             && y >= r.y - 1 && y <= r.y + r.h + 1));
+  select(hit ? hit.id : null);
+});
+document.addEventListener('dblclick', e => {
+  if (e.target.closest('#side, #editor, #bar')) return;
+  if (state.sel && window.getSelection().isCollapsed) openEditor(state.sel);
+});
+
+// ---------- toolbar ----------
+
+$('pno').addEventListener('keydown', e => { if (e.key === 'Enter') { goto(parseInt($('pno').value, 10) || 1); $('pno').blur(); } });
+$('zin').addEventListener('click', () => setScale(state.scale * 1.15));
+$('zout').addEventListener('click', () => setScale(state.scale / 1.15));
+
+const outlineItems = [];
+try {
+  const walk = (items, depth) => {
+    for (const it of items || []) {
+      outlineItems.push(it);
+      const o = document.createElement('option');
+      o.value = outlineItems.length - 1;
+      o.textContent = '  '.repeat(depth) + it.title;
+      $('outline').appendChild(o);
+      if (depth < 1) walk(it.items, depth + 1);
+    }
+  };
+  walk(await pdf.getOutline(), 0);
+} catch {}
+$('outline').addEventListener('change', async () => {
+  const it = outlineItems[$('outline').value];
+  $('outline').value = '';
+  $('outline').blur();
+  if (!it) return;
+  try {
+    const dest = typeof it.dest === 'string' ? await pdf.getDestination(it.dest) : it.dest;
+    goto(await pdf.getPageIndex(dest[0]) + 1);
+  } catch {}
+});
+
+// ---------- start ----------
+
+applyScale();
+try {
+  const r = await fetch('/api/annotations');
+  state.annots = (await r.json()).annots || [];
+  $('status').textContent = 'ready';
+} catch {
+  $('status').className = 'err';
+  $('status').textContent = 'server is not responding';
+}
+redraw();
+goto(store.get('page', 1));
+window.__ready = true;
+</script>
+</body>
+</html>
