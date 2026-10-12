@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>docmark</title>
+<title>just-doc</title>
 <link rel="stylesheet" href="pdfjs/pdf_viewer.css">
 <style>
   :root { --side: 340px; --bar: 40px; }
@@ -80,7 +80,7 @@ let zoomTimer = 0;
 const pdf = await pdfjsLib.getDocument('/doc').promise;
 const base = (await pdf.getPage(1)).getViewport({ scale: 1 });
 $('pcount').textContent = pdf.numPages;
-try { document.title = (await (await fetch('/api/info')).json()).name + ' – docmark'; } catch {}
+try { document.title = (await (await fetch('/api/info')).json()).name + ' – just-doc'; } catch {}
 
 for (let i = 1; i <= pdf.numPages; i++) {
   const pg = document.createElement('div');

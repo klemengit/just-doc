@@ -1,12 +1,12 @@
-# docmark
+# just-doc
 
 Read a PDF, select text, press a key, write what is wrong with it. Every comment
 is saved to a JSON file together with the exact text and position it refers to,
 so a script or a coding assistant can find the right place in the source.
 
 ```bash
-python3 docmark.py book.pdf          # open for commenting
-python3 docmark.py book.pdf --read   # print the comments
+python3 just_doc.py book.pdf          # open for commenting
+python3 just_doc.py book.pdf --read   # print the comments
 ```
 
 Needs only Python 3 (standard library). The window is a Chromium, Brave or

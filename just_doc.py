@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""docmark -- highlight and comment a PDF in a local window.
+"""just-doc -- highlight and comment a PDF in a local window.
 
 Comments are written to ``<name>.comments.json`` next to the PDF, so a script
 (or a coding assistant) can read exactly which text each comment refers to.
 
 Usage
 -----
-    docmark.py book.pdf            open the PDF for commenting
-    docmark.py book.pdf --read     print the comments (with source lines if
+    just_doc.py book.pdf            open the PDF for commenting
+    just_doc.py book.pdf --read     print the comments (with source lines if
                                    book.synctex.gz is next to the PDF)
 
 Only the Python standard library is needed.
