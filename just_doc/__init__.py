@@ -8,11 +8,12 @@ Usage
 -----
     just-doc book.pdf            open the PDF for commenting
     just-doc book.pdf --read     print the comments (with source lines if
-                                   book.synctex.gz is next to the PDF)
-
-Only the Python standard library is needed.
+                                 book.synctex.gz is next to the PDF)
+    just-doc book.pdf --export   write book.commented.pdf with the comments
+                                 as ordinary PDF annotations
 """
 import argparse
+import getpass
 import hashlib
 import json
 import os
@@ -38,6 +39,55 @@ def load_comments(doc):
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {"annots": []}
+
+
+def export_path(doc):
+    """Return the path of the exported PDF that carries the comments."""
+    return doc.with_suffix(".commented.pdf")
+
+
+def export(doc):
+    """Write a copy of ``doc`` with the comments as standard PDF highlights.
+
+    The original PDF is not changed. Returns the output path and the number
+    of annotations written.
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from pypdf.annotations import Highlight
+        from pypdf.generic import ArrayObject, FloatObject, NameObject, TextStringObject
+    except ImportError as exc:
+        raise RuntimeError("export needs the pypdf package (it comes with 'uv tool install')") from exc
+
+    writer = PdfWriter(clone_from=PdfReader(str(doc)))
+    author = TextStringObject(getpass.getuser())
+    count = 0
+    for a in load_comments(doc)["annots"]:
+        by_page = {}
+        for r in a["rects"]:
+            by_page.setdefault(r["p"], []).append(r)
+        for k, (number, rects) in enumerate(sorted(by_page.items())):
+            # stored positions are measured from the top-left corner; PDF counts from the bottom-left
+            box = writer.pages[number - 1].cropbox
+            left, top = float(box.left), float(box.top)
+            quads, xs, ys = [], [], []
+            for r in rects:
+                x1, x2 = left + r["x"], left + r["x"] + r["w"]
+                y1, y2 = top - r["y"], top - r["y"] - r["h"]
+                quads += [x1, y1, x2, y1, x1, y2, x2, y2]
+                xs += [x1, x2]
+                ys += [y1, y2]
+            annot = Highlight(rect=(min(xs), min(ys), max(xs), max(ys)),
+                              quad_points=ArrayObject(FloatObject(round(v, 2)) for v in quads),
+                              highlight_color="ffb347" if a["comment"] else "ffe45c")
+            annot[NameObject("/T")] = author
+            if a["comment"] and k == 0:
+                annot[NameObject("/Contents")] = TextStringObject(a["comment"])
+            writer.add_annotation(page_number=number - 1, annotation=annot)
+            count += 1
+    out = export_path(doc)
+    writer.write(str(out))
+    return out, count
 
 
 def make_handler(doc):
@@ -69,7 +119,16 @@ def make_handler(doc):
                 super().do_GET()
 
         def do_POST(self):
-            if self.path.split("?")[0] != "/api/annotations":
+            route = self.path.split("?")[0]
+            if route == "/api/export":
+                try:
+                    out, count = export(doc)
+                except Exception as exc:  # noqa: BLE001
+                    self._json(500, {"error": str(exc)})
+                    return
+                self._json(200, {"ok": True, "file": out.name, "n": count})
+                return
+            if route != "/api/annotations":
                 self._json(404, {"error": "not found"})
                 return
             try:
@@ -176,13 +235,20 @@ def main():
     ap.add_argument("pdf", type=Path)
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read: print JSON")
+    ap.add_argument("--export", action="store_true", help="write <name>.commented.pdf with the comments inside")
     ap.add_argument("--port", type=int, default=0, help="port (default: derived from the file path)")
     ap.add_argument("--no-window", action="store_true", help="start the server only")
     args = ap.parse_args()
     doc = args.pdf.resolve()
     if not doc.is_file():
         sys.exit(f"not found: {doc}")
-    if args.read:
+    if args.export:
+        try:
+            out, count = export(doc)
+        except RuntimeError as exc:
+            sys.exit(str(exc))
+        print(f"{count} annotation(s) -> {out}")
+    elif args.read:
         read(doc, args.json)
     else:
         serve(doc, args.port, not args.no_window)

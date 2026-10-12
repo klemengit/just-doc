@@ -51,7 +51,7 @@
   <span>p. <input id="pno" type="text" value="1"> / <span id="pcount">?</span></span>
   <select id="outline"><option value="">contents …</option></select>
   <button id="zout">−</button><span id="zval"></span><button id="zin">+</button>
-  <span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom</span>
+  <span><kbd>a</kbd> highlight &nbsp;<kbd>s</kbd> comment &nbsp;<kbd>d</kbd> delete &nbsp;<kbd>u</kbd> undo &nbsp;<kbd>Ctrl</kbd>+wheel zoom &nbsp;<kbd>Ctrl</kbd>+<kbd>S</kbd> export PDF</span>
   <span id="hint"></span>
   <span id="status">loading …</span>
 </div>
@@ -203,6 +203,23 @@ async function save() {
   } catch (e) {
     $('status').className = 'err';
     $('status').textContent = 'NOT SAVED – server is not responding';
+  }
+}
+
+// writes a copy of the PDF with the comments as ordinary PDF annotations
+async function exportPdf() {
+  if (state.editing) closeEditor(true);
+  $('status').className = '';
+  $('status').textContent = 'exporting …';
+  try {
+    await save();
+    const r = await fetch('/api/export', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    $('status').textContent = `exported ${j.n} → ${j.file}`;
+  } catch (e) {
+    $('status').className = 'err';
+    $('status').textContent = 'export failed: ' + e.message;
   }
 }
 
@@ -360,6 +377,11 @@ document.addEventListener('keydown', e => {
     // take over the browser's own zoom keys
     e.preventDefault();
     setScale(e.key === '0' ? 1.5 : state.scale * (e.key === '-' ? 1 / 1.15 : 1.15));
+    return;
+  }
+  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    exportPdf();
     return;
   }
   if (e.ctrlKey || e.altKey || e.metaKey) return;

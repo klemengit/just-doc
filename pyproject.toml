@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Highlight and comment a PDF with single keys; comments are saved as JSON with the exact text and position."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = ["pypdf>=4"]
 
 [project.scripts]
 just-doc = "just_doc:main"

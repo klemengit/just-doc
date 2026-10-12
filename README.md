@@ -7,6 +7,7 @@ so a script or a coding assistant can find the right place in the source.
 ```bash
 just-doc book.pdf          # open for commenting
 just-doc book.pdf --read   # print the comments
+just-doc book.pdf --export # write book.commented.pdf with the comments inside
 ```
 
 ## Install
@@ -21,7 +22,7 @@ or with pipx: `pipx install git+https://github.com/klemengit/just-doc`.
 
 To try it without installing: `uvx --from git+https://github.com/klemengit/just-doc just-doc book.pdf`.
 
-Needs Python 3.9 or newer and nothing else. The window is a Chromium, Brave or
+Needs Python 3.9 or newer; the only dependency is `pypdf`, used for the export. The window is a Chromium, Brave or
 Chrome app window if one is installed, otherwise a tab in the default browser.
 
 ## Keys
@@ -33,6 +34,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `d` | delete the selected highlight (click it first) |
 | `u` | undo the last delete |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
+| `Ctrl` `S` | export a copy of the PDF with the comments inside |
 | `Esc` | deselect |
 
 In the comment box, `Enter` saves and `Shift+Enter` starts a new line.
@@ -42,6 +44,14 @@ In the comment box, `Enter` saves and `Shift+Enter` starts a new line.
 `book.pdf` → `book.comments.json`, in the same folder, rewritten after every
 change. Each entry holds the selected `text`, the `comment`, and `rects`: page
 number `p` and position in PDF points measured from the top-left corner.
+
+## Sharing the comments
+
+The comments are not stored in the PDF, so other viewers do not show them.
+`Ctrl+S` (or `--export`) writes `book.commented.pdf`: a copy of the PDF with
+every highlight and comment as an ordinary PDF annotation, readable in Okular,
+Evince, Acrobat and others. The original PDF is never changed. The JSON file
+stays the working copy; export again after adding comments.
 
 ## LaTeX: comment → source line
 
