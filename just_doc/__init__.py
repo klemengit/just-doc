@@ -8,6 +8,7 @@ Usage
 -----
     just-doc book.pdf            open the PDF for commenting
     just-doc notes.md            the same for a markdown file (needs pandoc)
+    just-doc other.pdf           while a window is open: a new tab in it
     just-doc book.pdf --read     print the comments (with source lines if
                                  book.synctex.gz is next to the PDF)
     just-doc book.pdf --export   write book.commented.pdf with the comments
@@ -22,12 +23,16 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
+PORT = 8700
 MARKDOWN = (".md", ".markdown")
 MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
 BROWSERS = ("chromium", "brave", "google-chrome-stable", "google-chrome", "chromium-browser")
@@ -155,7 +160,38 @@ def export(doc):
     return out, count
 
 
-def make_handler(doc):
+class Tabs:
+    """The documents that are open in the window, one per tab."""
+
+    def __init__(self):
+        self.docs = {}       # id -> path, in the order of the tabs
+        self.focus = None    # id of the document that was opened last
+        self.opened = 0      # counts the open requests, so the window shows each one once
+        self.version = 0     # counts every change of the list
+        self.windows = 0     # windows that are listening for changes
+        self.changed = threading.Condition()
+
+    def open(self, doc):
+        key = hashlib.sha1(str(doc).encode()).hexdigest()[:10]
+        with self.changed:
+            self.docs[key] = doc
+            self.focus = key
+            self.opened += 1
+            self.version += 1
+            self.changed.notify_all()
+
+    def close(self, key):
+        with self.changed:
+            if self.docs.pop(key, None) is not None:
+                self.version += 1
+                self.changed.notify_all()
+
+    def listing(self):
+        tabs = [{"id": key, "name": doc.name, "path": str(doc)} for key, doc in self.docs.items()]
+        return {"tabs": tabs, "focus": self.focus, "opened": self.opened}
+
+
+def make_handler(tabs):
     class Handler(SimpleHTTPRequestHandler):
         extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".mjs": "text/javascript"}
 
@@ -172,9 +208,55 @@ def make_handler(doc):
         def _json(self, code, obj):
             self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+        def _route(self):
+            """Return the route and the document that the request is about.
+
+            The document is named by ``?d=<id>``; without it the first one is taken.
+            """
+            url = urllib.parse.urlsplit(self.path)
+            key = urllib.parse.parse_qs(url.query).get("d", [None])[0]
+            docs = dict(tabs.docs)
+            return url.path, key, docs.get(key) if key else next(iter(docs.values()), None)
+
+        def _events(self):
+            """Send the list of tabs to a window, now and after every change."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            with tabs.changed:
+                tabs.windows += 1
+            sent = None
+            try:
+                while True:
+                    with tabs.changed:
+                        if sent == tabs.version:
+                            tabs.changed.wait(2)
+                        version, listing = tabs.version, tabs.listing()
+                    if version != sent:
+                        self.wfile.write(f"data: {json.dumps(listing, ensure_ascii=False)}\n\n".encode("utf-8"))
+                        sent = version
+                    else:
+                        # a line that the window ignores; writing it fails once the window is closed
+                        self.wfile.write(b": still here\n\n")
+                    self.wfile.flush()
+            except OSError:
+                pass
+            finally:
+                with tabs.changed:
+                    tabs.windows -= 1
+
         def do_GET(self):
-            route = self.path.split("?")[0]
-            if route == "/doc":
+            route, _, doc = self._route()
+            if route == "/api/events":
+                self._events()
+            elif route == "/api/tabs":
+                self._json(200, {"app": "just-doc", "windows": tabs.windows, **tabs.listing()})
+            elif route in ("/", "/view"):
+                self.path = "/tabs.html" if route == "/" else "/index.html"
+                super().do_GET()
+            elif route in ("/doc", "/api/info", "/api/annotations") and doc is None:
+                self._json(404, {"error": "this document is not open"})
+            elif route == "/doc":
                 try:
                     body = shown_pdf(doc).read_bytes()
                 except RuntimeError as exc:
@@ -188,8 +270,36 @@ def make_handler(doc):
             else:
                 super().do_GET()
 
+        def _body(self):
+            size = int(self.headers.get("Content-Length", "0"))
+            return json.loads(self.rfile.read(size).decode("utf-8"))
+
         def do_POST(self):
-            route = self.path.split("?")[0]
+            route, key, doc = self._route()
+            if route == "/api/open":
+                # a web page cannot send JSON to another address, so this comes from the just-doc command
+                if self.headers.get("Content-Type") != "application/json":
+                    self._json(400, {"error": "JSON expected"})
+                    return
+                try:
+                    new = Path(self._body()["path"])
+                    if not new.is_file():
+                        raise ValueError(f"not found: {new}")
+                    shown_pdf(new)
+                except Exception as exc:  # noqa: BLE001
+                    self._json(400, {"error": str(exc)})
+                    return
+                windows = tabs.windows
+                tabs.open(new)
+                self._json(200, {"ok": True, "windows": windows})
+                return
+            if route == "/api/close":
+                tabs.close(key)
+                self._json(200, {"ok": True})
+                return
+            if route not in ("/api/export", "/api/annotations") or doc is None:
+                self._json(404, {"error": "not found"})
+                return
             if route == "/api/export":
                 try:
                     out, count = export(doc)
@@ -198,12 +308,8 @@ def make_handler(doc):
                     return
                 self._json(200, {"ok": True, "file": out.name, "n": count})
                 return
-            if route != "/api/annotations":
-                self._json(404, {"error": "not found"})
-                return
             try:
-                size = int(self.headers.get("Content-Length", "0"))
-                obj = json.loads(self.rfile.read(size).decode("utf-8"))
+                obj = self._body()
                 if not isinstance(obj.get("annots"), list):
                     raise ValueError("annots must be a list")
             except Exception as exc:  # noqa: BLE001
@@ -236,29 +342,43 @@ def open_window(url):
     webbrowser.open(url)
 
 
-def already_serving(port, doc):
+def hand_over(url, doc):
+    """Open ``doc`` as a tab of the just-doc that runs at ``url``.
+
+    Returns the number of windows it has, or None when no just-doc answers there.
+    """
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info", timeout=1) as resp:
-            return json.loads(resp.read()).get("path") == str(doc)
+        with urllib.request.urlopen(url + "api/tabs", timeout=1) as resp:
+            if json.loads(resp.read()).get("app") != "just-doc":
+                return None
     except Exception:  # noqa: BLE001
-        return False
+        return None
+    req = urllib.request.Request(url + "api/open", data=json.dumps({"path": str(doc)}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read())["windows"]
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(json.loads(exc.read()).get("error", str(exc))) from exc
 
 
 def serve(doc, port, window):
-    # The port is derived from the path, so one document keeps one address
-    # (and with it the remembered page and zoom) between runs.
-    first = port or 8700 + int(hashlib.sha1(str(doc).encode()).hexdigest()[:6], 16) % 1000
+    # One just-doc serves all open documents: the first command starts it, and every later
+    # command hands its document over to it as a new tab and returns.
+    first = port or PORT
     for candidate in range(first, first + 20):
         url = f"http://127.0.0.1:{candidate}/"
         try:
-            server = ThreadingHTTPServer(("127.0.0.1", candidate), make_handler(doc))
+            server = ThreadingHTTPServer(("127.0.0.1", candidate), make_handler(tabs := Tabs()))
         except OSError:
-            if already_serving(candidate, doc):
-                print(f"already running: {url}")
-                if window:
-                    open_window(url)
-                return
-            continue
+            windows = hand_over(url, doc)
+            if windows is None:
+                continue
+            print(f"{doc.name}: new tab in the running just-doc, {url}")
+            if window and not windows:
+                open_window(url)
+            return
+        tabs.open(doc)
         print(f"{doc.name}: {url}  (comments -> {comments_path(doc).name}, Ctrl+C to stop)")
         if window:
             open_window(url)
@@ -338,7 +458,7 @@ def main():
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read: print JSON")
     ap.add_argument("--export", action="store_true", help="write <name>.commented.pdf with the comments inside")
-    ap.add_argument("--port", type=int, default=0, help="port (default: derived from the file path)")
+    ap.add_argument("--port", type=int, default=0, help=f"port (default: {PORT})")
     ap.add_argument("--no-window", action="store_true", help="start the server only")
     args = ap.parse_args()
     doc = args.pdf.resolve()

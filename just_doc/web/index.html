@@ -149,6 +149,8 @@
     <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>comment on / strike through the selection</td></tr>
     <tr><td><kbd>Ctrl</kbd> wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom around the pointer</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>export a copy of the PDF with the comments inside</td></tr>
+    <tr><td><kbd>H</kbd> / <kbd>L</kbd></td><td>previous / next tab, when several documents are open; also <kbd>Alt</kbd> <kbd>←</kbd> / <kbd>→</kbd></td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>w</kbd></td><td>close the tab; also <kbd>Alt</kbd> <kbd>w</kbd></td></tr>
     <tr><td><kbd>?</kbd></td><td>show or hide this list</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>cancel / deselect</td></tr>
   </table>
@@ -161,9 +163,15 @@ import * as pdfjsLib from './pdfjs/pdf.min.mjs';
 pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.mjs';
 
 const $ = id => document.getElementById(id);
+// the document of this viewer; the window can hold several, one per tab
+const DOC = new URLSearchParams(location.search).get('d') || '';
+const api = path => path + (DOC ? '?d=' + DOC : '');
+// page, zoom and page view are remembered for each document, the rest for all
+const OWN = ['page', 'scale', 'single', 'scaleBefore'];
 const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  key: k => (OWN.includes(k) ? DOC + ':' : '') + k,
+  get(k, d) { try { const v = localStorage.getItem(store.key(k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(store.key(k), JSON.stringify(v)); } catch {} },
 };
 
 const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
@@ -176,10 +184,10 @@ const links = {};      // page number -> links of the page, positions in points 
 const wordCache = {};  // page number -> word list, for visual mode; dropped when the page is unloaded
 let zoomTimer = 0;
 
-const pdf = await pdfjsLib.getDocument('/doc').promise;
+const pdf = await pdfjsLib.getDocument(api('/doc')).promise;
 const base = (await pdf.getPage(1)).getViewport({ scale: 1 });
 $('pcount').textContent = pdf.numPages;
-try { document.title = (await (await fetch('/api/info')).json()).name + ' – just-doc'; } catch {}
+try { document.title = (await (await fetch(api('/api/info'))).json()).name + ' – just-doc'; } catch {}
 
 for (let i = 1; i <= pdf.numPages; i++) {
   const pg = document.createElement('div');
@@ -362,7 +370,7 @@ function hint(msg) { $('hint').textContent = msg; clearTimeout(hint.t); hint.t =
 
 async function save() {
   try {
-    const r = await fetch('/api/annotations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await fetch(api('/api/annotations'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                              body: JSON.stringify({ annots: state.annots }) });
     if (!r.ok) throw new Error(r.status);
     $('status').className = '';
@@ -389,7 +397,7 @@ async function exportPdf() {
   $('status').textContent = 'exporting …';
   try {
     await save();
-    const r = await fetch('/api/export', { method: 'POST' });
+    const r = await fetch(api('/api/export'), { method: 'POST' });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
     $('status').textContent = 'saved ✓';
@@ -1473,6 +1481,11 @@ function handleKey(e) {
     case 'V': e.preventDefault(); startVisual('vline'); return;
     case 'C': e.preventDefault(); toggleHl(); return;
     case 'P': e.preventDefault(); setSingle(!state.single); return;
+    // previous / next tab, as the buffer keys of many nvim setups
+    case 'H': case 'L':
+      e.preventDefault();
+      if (window.parent !== window && window.parent.tabKey) window.parent.tabKey(k === 'H' ? 'ArrowLeft' : 'ArrowRight');
+      return;
     case 'Enter': {
       e.preventDefault();
       const l = cursorLink();
@@ -1523,6 +1536,14 @@ function handleKey(e) {
 }
 
 document.addEventListener('keydown', e => {
+  // Alt+Left / Alt+Right / Alt+w belong to the tabs of the window; Ctrl+w closes the tab too,
+  // but not while a comment is written
+  const tabs = window.parent !== window && window.parent.tabKey;
+  const closes = e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w' && !e.target.matches('textarea, input, select');
+  if (tabs && (closes || (e.altKey && !e.ctrlKey)) && tabs(e.key)) {
+    e.preventDefault();
+    return;
+  }
   if (e.ctrlKey && !e.altKey && ['+', '=', '-', '0'].includes(e.key)) {
     // take over the browser's own zoom keys
     e.preventDefault();
@@ -1606,7 +1627,7 @@ if (store.get('noSide', false)) document.body.classList.add('no-side');
 setMode('normal');
 applyScale();
 try {
-  const r = await fetch('/api/annotations');
+  const r = await fetch(api('/api/annotations'));
   state.annots = (await r.json()).annots || [];
   $('status').textContent = 'ready';
 } catch {

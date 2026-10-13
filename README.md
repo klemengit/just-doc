@@ -51,6 +51,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `v` / `V` | start a visual / visual line selection (see below) |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
 | `Ctrl` `S` | export a copy of the PDF with the comments inside |
+| `H` / `L` | previous / next tab, when several documents are open; `Alt` `←` / `Alt` `→` do the same |
+| `Ctrl` `w` | close the tab; `Alt` `w` does the same |
 | `?` | show or hide the full key list |
 | `Esc` | deselect |
 
@@ -59,6 +61,18 @@ In the comment box, `Enter` saves and `Shift+Enter` starts a new line.
 The browser's own shortcuts (print, find, history, bookmarks and so on) are
 switched off in the window. Copy (`Ctrl+C`), reload (`Ctrl+R`, `F5`), full
 screen (`F11`) and the developer tools (`F12`) still work.
+
+### Tabs
+
+The first `just-doc book.pdf` opens the window. While it runs, every further
+`just-doc other.pdf` adds the document as a new tab of the same window and
+returns at once. `H` and `L` change the tab and `Ctrl+w` closes it; the
+tab bar shows only when more than one document is open. Each tab keeps its
+page, zoom, cursor and search.
+
+All tabs belong to the first command, so stopping it with `Ctrl+C` closes
+them all. If the window was closed but the command still runs, the next
+`just-doc` opens a new window with the tabs.
 
 ### Cursor and visual selection
 

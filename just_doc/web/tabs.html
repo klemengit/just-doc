@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>just-doc</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #525659; font: 12px/22px system-ui, sans-serif; }
+  #tabs { display: flex; height: 22px; background: #2b2d30; color: #a9adb3; user-select: none; }
+  .tab { padding: 0 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+         border-right: 1px solid #45484d; }
+  .tab.on { background: #525659; color: #fff; }
+  #keys { margin-left: auto; padding: 0 10px; white-space: nowrap; }
+  kbd { font: 11px ui-monospace, monospace; background: #45484d; color: #e8e8e8; border-radius: 3px; padding: 0 4px; }
+  iframe { position: absolute; left: 0; top: 22px; width: 100%; height: calc(100% - 22px); border: 0; visibility: hidden; }
+  iframe.on { visibility: visible; }
+  /* one document needs no tab bar */
+  body.one #tabs { display: none; }
+  body.one iframe { top: 0; height: 100%; }
+</style>
+</head>
+<body class="one">
+<div id="tabs"></div>
+<script>
+// The window: one tab per open document. Each document is a full viewer in its own frame,
+// so it keeps its page, zoom, cursor and search while another tab is shown.
+const bar = document.getElementById('tabs');
+const frames = {};   // document id -> iframe
+let tabs = [], active = null;
+let opened = +(sessionStorage.getItem('opened') || -1);   // the last "open" request that was shown
+
+function show(id) {
+  if (!frames[id]) return;
+  active = id;
+  sessionStorage.setItem('tab', id);
+  for (const k in frames) frames[k].classList.toggle('on', k === id);
+  document.title = tabs.find(t => t.id === id).name + ' – just-doc';
+  frames[id].contentWindow.focus();
+  draw();
+}
+
+function draw() {
+  bar.textContent = '';
+  for (const t of tabs) {
+    const el = document.createElement('div');
+    el.className = 'tab' + (t.id === active ? ' on' : '');
+    el.textContent = t.name;
+    el.title = t.path;
+    el.onclick = () => show(t.id);
+    bar.appendChild(el);
+  }
+  const keys = document.createElement('div');
+  keys.id = 'keys';
+  keys.innerHTML = '<kbd>H</kbd>/<kbd>L</kbd> tab &nbsp;<kbd>Ctrl</kbd> <kbd>w</kbd> close';
+  bar.appendChild(keys);
+  document.body.classList.toggle('one', tabs.length < 2);
+}
+
+// the server sends the list of documents when it changes
+function sync(msg) {
+  const at = tabs.findIndex(t => t.id === active);
+  tabs = msg.tabs;
+  for (const t of tabs) {
+    if (frames[t.id]) continue;
+    const f = frames[t.id] = document.createElement('iframe');
+    f.src = 'view?d=' + t.id;
+    f.onload = () => { if (active === t.id) f.contentWindow.focus(); };
+    document.body.appendChild(f);
+  }
+  for (const id in frames) if (!tabs.some(t => t.id === id)) { frames[id].remove(); delete frames[id]; }
+  if (!tabs.length) { draw(); return; }
+  if (msg.opened !== opened) {
+    opened = msg.opened;
+    sessionStorage.setItem('opened', opened);
+    show(msg.focus);
+  } else if (!frames[active]) {
+    // the tab that was shown is closed (or the window was reloaded): take its neighbour
+    const kept = sessionStorage.getItem('tab');
+    show(frames[kept] ? kept : tabs[Math.min(Math.max(at, 0), tabs.length - 1)].id);
+  } else draw();
+}
+
+// Left / Right change the tab and w closes it; the viewers pass their tab keys on as these.
+// Returns true when the key was used.
+window.tabKey = key => {
+  const at = tabs.findIndex(t => t.id === active);
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    if (tabs.length > 1) show(tabs[(at + (key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length].id);
+    return true;
+  }
+  if (key === 'w' || key === 'W') {
+    if (tabs.length > 1) fetch('api/close?d=' + active, { method: 'POST' });
+    return true;
+  }
+  return false;
+};
+// the same keys while the tab bar itself has the keyboard
+document.addEventListener('keydown', e => {
+  const key = !e.ctrlKey && !e.altKey && (e.key === 'H' || e.key === 'L') ? (e.key === 'H' ? 'ArrowLeft' : 'ArrowRight')
+            : (e.altKey && !e.ctrlKey) || (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'w') ? e.key : '';
+  if (key && window.tabKey(key)) e.preventDefault();
+});
+window.addEventListener('focus', () => { if (frames[active]) frames[active].contentWindow.focus(); });
+
+new EventSource('api/events').onmessage = e => sync(JSON.parse(e.data));
+</script>
+</body>
+</html>

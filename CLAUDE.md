@@ -9,8 +9,11 @@ the JSON format, export and the LaTeX source lookup.
 
 - `just_doc/__init__.py` — all the Python: the `just-doc` command (`main`), the
   `--read` and `--export` modes, and the code that opens the window.
-- `just_doc/web/index.html` — the whole user interface in one file (HTML, CSS
-  and JavaScript together).
+- `just_doc/web/index.html` — the viewer of one document: the whole user
+  interface in one file (HTML, CSS and JavaScript together).
+- `just_doc/web/tabs.html` — the window: a tab bar and one viewer per open
+  document, each in its own frame. One running `just-doc` serves all open
+  documents; a later `just-doc file` hands its document over to it as a tab.
 - `just_doc/web/pdfjs/` — a bundled copy of PDF.js 4.10.38 (third-party, Apache
   2.0). Do not edit it.
 - `pyproject.toml` — packaging; built with hatchling.
