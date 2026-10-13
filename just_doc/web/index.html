@@ -694,11 +694,14 @@ function wordsForPage(p) {
                  y: (r.top + r.height / 2 - box.top) / state.scale, h: r.height / state.scale, line: 0 });
     }
   }
-  // words at the same height share a line number
-  let line = -1, prev = null;
+  // Words at the same height share a line number. The height of a line is the mean of its
+  // words weighted by their width, so an index or an exponent does not join two lines.
+  let line = -1, sum = 0, width = 0, wide = null;
   for (const w of [...out].sort((a, b) => a.y - b.y)) {
-    if (prev === null || w.y - prev > w.h * 0.6) line++;
-    prev = w.y;
+    if (!wide || w.y - sum / width > Math.min(w.h, wide.h) * 0.6) { line++; sum = width = 0; wide = w; }
+    sum += w.y * w.w;
+    width += w.w;
+    if (w.w > wide.w) wide = w;
     w.line = line;
   }
   if (out.length) wordCache[p] = out;
