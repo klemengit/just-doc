@@ -18,6 +18,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
 MARKDOWN = (".md", ".markdown")
+MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
 BROWSERS = ("chromium", "brave", "google-chrome-stable", "google-chrome", "chromium-browser")
 
 
@@ -49,11 +51,37 @@ def cache_dir():
     return path
 
 
+def draw_diagrams(text):
+    """Replace the mermaid blocks of a markdown ``text`` with pictures.
+
+    Each diagram is drawn once with mmdc (mermaid-cli) and kept in the cache
+    folder under a name made from its content. Without mmdc, and for a
+    diagram with an error, the block stays as it is and shows as code.
+    """
+    if not shutil.which("mmdc"):
+        return text
+
+    def picture(match):
+        code = match.group(1)
+        out = cache_dir() / ("mermaid-" + hashlib.sha1(code.encode()).hexdigest()[:16] + ".pdf")
+        if not out.exists():
+            src = out.with_suffix(".mmd")
+            src.write_text(code, encoding="utf-8")
+            res = subprocess.run(["mmdc", "-i", str(src), "-o", str(out), "--pdfFit"], capture_output=True)
+            src.unlink()
+            if res.returncode or not out.exists():
+                return match.group(0)
+        return f"![]({out})\n"
+
+    return MERMAID.sub(picture, text)
+
+
 def shown_pdf(doc):
     """Return the PDF that is shown for ``doc``.
 
     A PDF is shown as it is. A markdown file is converted with pandoc into a
-    PDF in the cache folder, again whenever the markdown file is newer.
+    PDF in the cache folder, again whenever the markdown file is newer. Its
+    mermaid diagrams are drawn first.
     """
     if doc.suffix.lower() not in MARKDOWN:
         return doc
@@ -61,10 +89,11 @@ def shown_pdf(doc):
         raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
     out = cache_dir() / (hashlib.sha1(str(doc).encode()).hexdigest()[:16] + ".pdf")
     if not out.exists() or out.stat().st_mtime < doc.stat().st_mtime:
-        cmd = ["pandoc", doc.name, "-o", str(out)]
+        cmd = ["pandoc", "--from=markdown", "-o", str(out)]
         if shutil.which("typst"):
             cmd.append("--pdf-engine=typst")
-        res = subprocess.run(cmd, cwd=doc.parent, capture_output=True, text=True)
+        text = draw_diagrams(doc.read_text(encoding="utf-8"))
+        res = subprocess.run(cmd, cwd=doc.parent, input=text, capture_output=True, text=True, encoding="utf-8")
         if res.returncode:
             raise RuntimeError(f"pandoc could not convert {doc.name}:\n{res.stderr.strip()}")
     return out

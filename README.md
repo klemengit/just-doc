@@ -136,6 +136,11 @@ PDF is kept in `~/.cache/just-doc` and made again when the markdown file has
 changed. Comments go to `notes.comments.json` next to the markdown file, and
 `--export` writes `notes.commented.pdf` there.
 
+A ```` ```mermaid ```` block is drawn as a diagram when `mmdc`
+([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)) is installed;
+without it the block shows as code. The text in a diagram can be selected and
+searched like the rest of the page.
+
 `--read` adds the line in the markdown file for each comment. It finds the
 line by searching for the selected text, so it also works after the file was
 edited elsewhere; a text that occurs more than once gets its first line and a
