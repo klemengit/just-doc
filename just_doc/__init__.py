@@ -74,6 +74,8 @@ Everything goes through these commands; do not edit the .comments.json file.
    SyncTeX). "delete:" instead of "text:" means that the author wants this
    text removed. "area:" is a rectangle around a figure, an equation or code.
    A comment without words is a plain highlight: ask what is meant.
+   "text" is the text as it stands in the document now; when it was changed
+   after the comment was written, a line below gives the text as it was.
 
 3. Answer every open comment, in the language of the comment, in a sentence
    or two; the list in the window is narrow:
@@ -419,7 +421,7 @@ def make_handler(tabs):
                     return
                 self._send(200, body, "application/pdf")
             elif route == "/api/info":
-                self._json(200, {"name": doc.name, "path": str(doc)})
+                self._json(200, {"name": doc.name, "path": str(doc), "file": doc.stat().st_mtime})
             elif route == "/api/annotations":
                 self._json(200, load_comments(doc))
             elif route == "/api/wait":
@@ -718,6 +720,10 @@ def read(doc, as_json, only_open=False):
         kind = {"box": "area", "strike": "delete"}.get(a.get("kind"), "text")
         where += "  (done)" if a.get("done") else "" if a["open"] or only_open else "  (answered)"
         print(f"[{i}] {where}\n    {kind + ':':<8} {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}")
+        if a.get("was") is not None:
+            print(f"    (the text was changed after the comment; it was: {a['was']})")
+        if a.get("lost"):
+            print("    (the text is no longer found in the document; the page is the old one)")
         for r in a.get("replies", []):
             print(f"    reply ({r.get('from') or 'author'}): {r['text']}")
         print()

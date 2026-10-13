@@ -154,6 +154,11 @@ number `p` and position in PDF points measured from the top-left corner.
 An entry with `kind` `strike` is struck-through text that should be deleted,
 and `kind` `box` is a rectangle; an entry without `kind` is a highlight.
 
+`before` and `after` hold the letters and digits around the text, to find it
+again in a changed document (see "When the document changes"); `was` is the
+text as it was when it has changed since, and `lost` marks a comment whose
+text is not found any more.
+
 A comment can have `replies`, a list of entries with `text`, the time `at` and
 `from`, the name given with `--reply`. A reply without `from` was written in
 the window.
@@ -219,9 +224,26 @@ again. `--done` can be combined with `--reply` and given several times.
 `--read` prints all comments with their replies, and marks each one that is
 `(done)` or `(answered)`.
 
+### When the document changes
+
 When the file of an open document changes on disk (the markdown file was
 edited, the PDF was compiled again), the window loads it again by itself and
-stays on the page.
+stays on the page. It then looks for the text of every comment in the new
+version:
+
+- Text that only moved, to another line or page, gets its highlight at the
+  new place.
+- Text that was changed is found by the text around it. What stands there
+  now is marked green, and the list shows both: ~~«teh»~~ → «the». `--read`
+  prints the new text and the old one.
+- When the text around it is gone too, the comment keeps its old place and
+  the list says "text not found".
+
+Each comment remembers 120 letters and digits before and after its text for
+this. A changed text next to another changed text is found as one piece, so
+two comments can then point to the same new sentence. A rectangle (`r`) stays
+where it was drawn. The search runs in the window, so a document that changed
+while it was not open is handled when it is opened next.
 
 ## Sharing the comments
 
@@ -242,9 +264,10 @@ adds the `.tex` file and line for each comment:
     comment: too strong, say when it converges
 ```
 
-Positions refer to the PDF as it was when you commented. Recompiling moves the
-text, so comment on a copy of the PDF (and of its `.synctex.gz`) and read the
-comments before replacing it.
+The lookup uses the position of the comment in the PDF. After compiling again
+the window moves the comments to their text in the new PDF (see "When the
+document changes"), so the lines stay right as long as the document is open
+in the window, or is opened once before `--read`.
 
 ## Markdown files
 
@@ -271,8 +294,8 @@ note:
     comment: too strong
 ```
 
-The positions of the highlights on the page refer to the PDF as it was when
-you commented, as with LaTeX.
+After the markdown file was edited, the highlights move to their text in the
+new PDF (see "When the document changes").
 
 ## Third-party code
 

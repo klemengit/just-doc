@@ -72,6 +72,9 @@
   .it .c { margin-top: 2px; white-space: pre-wrap; font-weight: 600; }
   .it .c.none { color: #aaa; font-weight: normal; }
   .it.done { opacity: .55; }
+  .pg .hl div.fixed { background: #8fdf8f; }
+  .it .q s { text-decoration-color: #d00000; }
+  .it .q u { text-decoration: none; background: #c9f2c9; color: #222; }
   .it .r { margin: 3px 0 0 4px; padding-left: 6px; border-left: 2px solid #0050d0; white-space: pre-wrap; }
   .it .r b { color: #0050d0; }
   .it .r.mine { border-left-color: #999; font-weight: 600; }
@@ -187,7 +190,7 @@ const $ = id => document.getElementById(id);
 const DOC = new URLSearchParams(location.search).get('d') || '';
 const api = path => path + (DOC ? '?d=' + DOC : '');
 // page, zoom and page view are remembered for each document, the rest for all
-const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting'];
+const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting', 'placed'];
 const store = {
   key: k => (OWN.includes(k) ? DOC + ':' : '') + k,
   get(k, d) { try { const v = localStorage.getItem(store.key(k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -207,7 +210,8 @@ let zoomTimer = 0;
 const pdf = await pdfjsLib.getDocument(api('/doc')).promise;
 const base = (await pdf.getPage(1)).getViewport({ scale: 1 });
 $('pcount').textContent = pdf.numPages;
-try { document.title = (await (await fetch(api('/api/info'))).json()).name + ' – just-doc'; } catch {}
+let info = {};
+try { info = await (await fetch(api('/api/info'))).json(); document.title = info.name + ' – just-doc'; } catch {}
 
 for (let i = 1; i <= pdf.numPages; i++) {
   const pg = document.createElement('div');
@@ -439,7 +443,8 @@ function drawHighlights() {
     if (a.done && a.id !== state.sel) continue;
     for (const r of a.rects) {
       const d = document.createElement('div');
-      d.className = (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '') + (a.id === state.sel ? 'on' : '');
+      // green: the text was changed after the comment, and this is the new one
+      d.className = (a.was !== undefined ? 'fixed ' : (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '')) + (a.id === state.sel ? 'on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
       pgs[r.p].querySelector('.hl').appendChild(d);
     }
@@ -454,8 +459,16 @@ function drawList() {
     const it = document.createElement('div');
     it.className = 'it' + (a.id === state.sel ? ' on' : '') + (a.done ? ' done' : '');
     it.dataset.id = a.id;
-    const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p + (a.done ? ' · done ✓' : '');
+    const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p + (a.done ? ' · done ✓' : '') + (a.lost ? ' · text not found' : '');
     const q = document.createElement('div'); q.className = 'q' + (a.kind === 'strike' ? ' strike' : ''); q.textContent = (a.kind === 'box' ? '▭ ' : '') + (a.text ? '«' + a.text.replace(/\s+/g, ' ') + '»' : '(area without text)');
+    if (a.was !== undefined) {
+      // the text as it was, and what stands there now
+      const was = document.createElement('s'), now = document.createElement('u');
+      was.textContent = '«' + a.was + '»';
+      now.textContent = a.text ? '«' + a.text + '»' : '(deleted)';
+      q.replaceChildren(was, ' → ', now);
+      q.className = 'q';
+    }
     const c = document.createElement('div'); c.className = 'c' + (a.comment ? '' : ' none');
     c.textContent = a.comment || (a.kind === 'strike' ? '(delete)' : '(no comment)');
     it.append(p, q, c);
@@ -472,6 +485,192 @@ function drawList() {
 }
 
 function redraw() { sortAnnots(); drawHighlights(); drawList(); }
+
+// ---------- places: finding the text of a comment again after the document was changed ----------
+
+// Texts are compared by their letters and digits only ("key"), so line breaks, hyphens and
+// spaces do not matter. A comment keeps the key of the text before and after it.
+const ALNUM = /[\p{L}\p{N}]/u;
+const pageIdx = {};   // page number -> { key, items, at, off }: for each key character its item and place in it
+const ruler = document.createElement('canvas').getContext('2d');
+
+function keyOf(s) {
+  let key = '';
+  for (let c = 0; c < s.length; c++) if (ALNUM.test(s[c])) { const l = s[c].toLowerCase(); key += l.length === 1 ? l : s[c]; }
+  return key;
+}
+
+async function pageIndex(p) {
+  if (pageIdx[p]) return pageIdx[p];
+  const page = await pdf.getPage(p), vp = page.getViewport({ scale: 1 }), tc = await page.getTextContent();
+  const items = [], at = [], off = [];
+  let key = '';
+  for (const it of tc.items) {
+    if (!it.str) { if (it.hasEOL && items.length) items[items.length - 1].eol = true; continue; }
+    const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+    const h = it.height || Math.hypot(it.transform[2], it.transform[3]);
+    items.push({ str: it.str, x, y: y - h * 0.86, w: it.width, h: h * 1.16, eol: it.hasEOL,
+                 font: tc.styles[it.fontName]?.fontFamily || 'sans-serif' });
+    for (let c = 0; c < it.str.length; c++) {
+      if (!ALNUM.test(it.str[c])) continue;
+      key += keyOf(it.str[c]);
+      at.push(items.length - 1);
+      off.push(c);
+    }
+  }
+  return pageIdx[p] = { key, items, at, off };
+}
+
+// horizontal place of character c of an item, measured with a font of the same kind
+function itemX(it, c) {
+  if (!c) return it.x;
+  ruler.font = '10px ' + it.font;
+  const full = ruler.measureText(it.str).width;
+  return it.x + (full ? ruler.measureText(it.str.slice(0, c)).width / full : c / it.str.length) * it.w;
+}
+
+// where the key characters s .. e-1 end in their last item: the full stop, comma or bracket
+// that follows the last letter belongs to them
+function endIn(ix, e) {
+  const str = ix.items[ix.at[e - 1]].str;
+  let c = ix.off[e - 1] + 1;
+  while (c < str.length && !ALNUM.test(str[c]) && !/[\s(\[{«„“]/.test(str[c])) c++;
+  return c;
+}
+
+// rectangles and text of the key characters s .. e-1 of a page
+function placeRects(p, ix, s, e) {
+  const raw = [];
+  for (let k = ix.at[s]; k <= ix.at[e - 1]; k++) {
+    const it = ix.items[k];
+    if (!it.str.trim()) continue;
+    const x0 = itemX(it, k === ix.at[s] ? ix.off[s] : 0), x1 = itemX(it, k === ix.at[e - 1] ? endIn(ix, e) : it.str.length);
+    raw.push({ p, x: x0, y: it.y, w: x1 - x0, h: it.h });
+  }
+  return mergeRects(raw);
+}
+function placeText(ix, s, e) {
+  let text = '';
+  for (let k = ix.at[s]; k <= ix.at[e - 1]; k++) {
+    const it = ix.items[k];
+    text += it.str.slice(k === ix.at[s] ? ix.off[s] : 0, k === ix.at[e - 1] ? endIn(ix, e) : it.str.length) + (it.eol ? ' ' : '');
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// Where the text before (before = true) or after a comment is found on a page: pairs of
+// the place of the comment's edge and the number of characters next to the comment that
+// are not the same any more. The 12 characters next to the comment are tried first; when
+// they are gone (the text there was changed too) and deep is set, the ones further away,
+// and from there the edge moves towards the comment as far as the text is the same.
+function edges(ix, ctx, before, deep) {
+  const n = Math.min(12, ctx.length), out = [];
+  // the comment stood at the edge of the page
+  if (n < 4) return [[before ? 0 : ix.key.length, 0]];
+  for (let d = 0; d + n <= ctx.length && (deep || !d); d += 6) {
+    const chunk = before ? ctx.slice(ctx.length - d - n, ctx.length - d) : ctx.slice(d, d + n);
+    for (let i = ix.key.indexOf(chunk); i >= 0; i = ix.key.indexOf(chunk, i + 1)) {
+      let at = before ? i + n : i, gap = d;
+      if (before) while (gap && ix.key[at] === ctx[ctx.length - gap]) { at++; gap--; }
+      else while (gap && ix.key[at - 1] === ctx[gap - 1]) { at--; gap--; }
+      out.push([at, gap]);
+    }
+  }
+  return out;
+}
+
+// The places on a page where the text of a comment may be now. "fit" says how sure the
+// place is: 2 and 1 for the same text with the same text on both sides or on one side,
+// 0 for the same text alone, and between 1 and 2 for a place that is found by the text
+// around it only, because the text itself was changed.
+function placesOn(a, key, p, ix, deep) {
+  const out = [], old = a.rects[0];
+  const add = (s, e, fit) => {
+    const k = Math.min(s, ix.at.length - 1), it = ix.items[ix.at[k]];
+    out.push({ p, ix, s, e, fit, far: Math.abs(p - old.p) * 1e5 + (it ? Math.abs(it.y - old.y) * 10 + Math.abs(itemX(it, ix.off[k]) - old.x) : 0) });
+  };
+  if (key.length >= 3) {
+    for (let i = ix.key.indexOf(key); i >= 0; i = ix.key.indexOf(key, i + 1)) {
+      add(i, i + key.length, (a.before && ix.key.slice(0, i).endsWith(a.before.slice(-12)) ? 1 : 0)
+                             + (a.after && ix.key.startsWith(a.after.slice(0, 12), i + key.length) ? 1 : 0));
+    }
+  }
+  if (!out.some(c => c.fit) && a.before !== undefined && a.after !== undefined && ix.key) {
+    let best = null;
+    for (const [s, ds] of edges(ix, a.before, true, deep)) {
+      for (const [e, de] of edges(ix, a.after, false, deep)) {
+        if (e < s || e - s > Math.max((key.length + ds + de) * 3, 300)) continue;
+        if (!best || ds + de < best.skip || (ds + de === best.skip && e - s < best.e - best.s)) best = { s, e, skip: ds + de };
+      }
+    }
+    if (best) add(best.s, best.e, 1.9 - best.skip / 1000);
+  }
+  return out;
+}
+
+// Finds the text of a comment in the document as it is now and moves the comment there.
+// Returns true when the comment was changed.
+async function place(a) {
+  if (a.kind === 'box' || !a.rects.length) return false;
+  const key = keyOf(a.text), old = a.rects[0];
+  if (key.length < 3 && a.before === undefined) return false;
+  // first the pages around the old place, then the whole document
+  const near = [0, 1, -1, 2, -2].map(d => old.p + d).filter(p => p >= 1 && p <= pdf.numPages);
+  const rest = Array.from({ length: pdf.numPages }, (_, i) => i + 1).filter(p => !near.includes(p));
+  let best = null, loose = null;
+  for (const pages of [near, rest]) {
+    for (const p of pages) {
+      for (const c of placesOn(a, key, p, await pageIndex(p), pages === near)) {
+        if (c.fit) { if (!best || c.fit > best.fit || (c.fit === best.fit && c.far < best.far)) best = c; }
+        else if (!loose || c.far < loose.far) loose = c;
+      }
+    }
+    if (best) break;
+  }
+  const c = best || loose;
+  if (!c) {
+    if (a.lost) return false;
+    a.lost = true;
+    return true;
+  }
+  let changed = false;
+  const { p, ix, s, e } = c;
+  const now = ix.key.slice(s, e) !== key;
+  let rects;
+  if (e > s) rects = placeRects(p, ix, s, e);
+  else {
+    // the text was removed: a thin mark where it stood
+    const k = Math.max(0, Math.min(s, ix.at.length) - 1), it = ix.items[ix.at[k]];
+    rects = [{ p, x: Math.round(itemX(it, ix.off[k] + 1)), y: Math.round(it.y), w: 3, h: Math.round(it.h) }];
+  }
+  const moved = now || rects[0].p !== old.p || Math.abs(rects[0].x - old.x) > 4 || Math.abs(rects[0].y - old.y) > 6;
+  if (moved && rects.length) { a.rects = rects; changed = true; }
+  if (now) {
+    if (a.was === undefined) a.was = a.text;
+    a.text = e > s ? placeText(ix, s, e) : '';
+  }
+  const before = ix.key.slice(Math.max(0, s - 120), s), after = ix.key.slice(e, e + 120);
+  if (a.before !== before || a.after !== after) { a.before = before; a.after = after; changed = true; }
+  if (a.lost) { delete a.lost; changed = true; }
+  return changed;
+}
+
+// after a change of the file: look for every comment again
+async function placeAll(stamp) {
+  if (!stamp || store.get('placed', 0) === stamp) return;
+  let changed = false, gen;
+  // a reply that comes in meanwhile brings a new list: start again with that one
+  do {
+    gen = state.gen;
+    for (const a of [...state.annots]) {
+      $('status').textContent = 'finding the comments in the new version …';
+      if (await place(a)) changed = true;
+    }
+  } while (gen !== state.gen);
+  $('status').textContent = 'ready';
+  store.set('placed', stamp);
+  if (changed) { redraw(); showNews(); save(); }
+}
 
 // ---------- news: replies and done marks that came from outside and were not looked at yet ----------
 
@@ -527,7 +726,11 @@ function captureSelection() {
   for (const range of ranges) text = captureRange(range, raw, text + ' ');
   text = text.replace(/\s+/g, ' ').trim();
   if (!raw.length || !text) return null;
-  // merge rectangles that lie on the same line
+  return { text, rects: mergeRects(raw) };
+}
+
+// merges rectangles that lie on the same line
+function mergeRects(raw) {
   raw.sort((a, b) => a.p - b.p || a.y - b.y || a.x - b.x);
   const rects = [];
   for (const r of raw) {
@@ -539,7 +742,7 @@ function captureSelection() {
     } else rects.push({ ...r });
   }
   for (const r of rects) for (const k of ['x', 'y', 'w', 'h']) r[k] = Math.round(r[k] * 100) / 100;
-  return { text, rects };
+  return rects;
 }
 
 // adds the rectangles of a range to raw and returns text with the text of the range added
@@ -646,6 +849,8 @@ function addFromSelection(kind) {
   state.sel = a.id;
   redraw();
   save();
+  // note the text around it, to find it again when the document changes
+  place(a).then(changed => { if (changed) save(); }).catch(() => {});
   return a;
 }
 
@@ -716,6 +921,7 @@ window.reloadAnnots = async () => {
   try {
     const before = state.annots.filter(isNew).length;
     state.annots = (await (await fetch(api('/api/annotations'))).json()).annots || [];
+    state.gen = (state.gen || 0) + 1;
     redraw();
     showNews();
     $('list').querySelector('.on')?.scrollIntoView({ block: 'nearest' });
@@ -1809,6 +2015,7 @@ redraw();
 showNews();
 goto(store.get('page', 1));
 if (store.get('single', false)) { state.scaleBefore = store.get('scaleBefore', 0); setSingle(true, false); }
+await placeAll(info.file).catch(() => {});
 window.__ready = true;
 </script>
 </body>
