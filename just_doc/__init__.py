@@ -370,6 +370,8 @@ class Tabs:
     def close(self, key):
         with self.changed:
             if self.docs.pop(key, None) is not None:
+                if self.focus == key:
+                    self.focus = next(reversed(self.docs), None)
                 self.version += 1
                 self.changed.notify_all()
 

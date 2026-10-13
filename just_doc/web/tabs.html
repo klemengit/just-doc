@@ -89,11 +89,14 @@ function sync(msg) {
     opened = msg.opened;
     sessionStorage.setItem('opened', opened);
     show(msg.focus);
-  } else if (!frames[active]) {
-    // the tab that was shown is closed (or the window was reloaded): take its neighbour
+  }
+  if (frames[active]) draw();
+  else {
+    // the tab that was shown is closed (or the window was reloaded), or the document that was
+    // opened last is closed again: take the tab from before, or a neighbour
     const kept = sessionStorage.getItem('tab');
     show(frames[kept] ? kept : tabs[Math.min(Math.max(at, 0), tabs.length - 1)].id);
-  } else draw();
+  }
 }
 
 // Left / Right change the tab and w closes it; the viewers pass their tab keys on as these.
