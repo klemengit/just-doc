@@ -135,6 +135,7 @@
     <tr><td><kbd>w</kbd> <kbd>b</kbd> <kbd>e</kbd></td><td>next word / word start / word end</td></tr>
     <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>move the cursor by line; the page follows</td></tr>
     <tr><td><kbd>0</kbd> <kbd>$</kbd></td><td>start / end of the line</td></tr>
+    <tr><td><kbd>f</kbd> / <kbd>F</kbd> + character</td><td>go to that character after / before the cursor on the line</td></tr>
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
     <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
@@ -849,6 +850,28 @@ function scrollCursorTo(where) {
   drawCursor();
 }
 
+// moves the cursor to the n-th character ch after (dir 1) or before (dir -1) it on its line
+function findChar(ch, dir, n) {
+  if (state.mode === 'normal' && !placeCursor()) return;
+  const c = state.cursor, ws = wordsForPage(c.p);
+  if (!wordAt(c)) return;
+  const [a, b] = lineSpan(c);
+  let i = c.i, o = c.o + dir;
+  for (; i >= a && i <= b; i += dir, o = dir > 0 ? 0 : i >= a ? ws[i].n - 1 : 0) {
+    for (; o >= 0 && o < ws[i].n; o += dir) {
+      if (ws[i].node.data[ws[i].s + o] !== ch || --n) continue;
+      state.cursor = { p: c.p, i, o };
+      state.wantX = null;
+      state.cursorTo = null;
+      if (state.mode !== 'normal') applyVisual();
+      showCursor();
+      drawCursor();
+      return;
+    }
+  }
+  hint(`no ${ch} ${dir > 0 ? 'after' : 'before'} the cursor on this line`);
+}
+
 // moves the cursor n times; returns false when there is no text to move on
 function moveCursor(key, n) {
   if (state.mode === 'normal') { if (!placeCursor()) return false; }
@@ -1417,10 +1440,30 @@ function handleKey(e) {
     return;
   }
 
+  // f and F wait for a character and move the cursor to it on its line
+  if (state.pending === 'f' || state.pending === 'F') {
+    e.preventDefault();
+    clearTimeout(state.keyTimer);
+    const dir = state.pending === 'f' ? 1 : -1;
+    state.pending = '';
+    hint('');
+    if (k.length === 1) findChar(k, dir, state.fCount);
+    return;
+  }
+  if (k === 'f' || k === 'F') {
+    e.preventDefault();
+    state.pending = k;
+    state.fCount = parseInt(state.count, 10) || 1;
+    state.count = '';
+    hint(k + ' …');
+    state.keyTimer = setTimeout(() => { if (state.pending === k) { state.pending = ''; hint(''); } }, 1500);
+    return;
+  }
+
   // zt, zz and zb scroll so that the cursor line is at the top, the middle or the bottom
   if (state.pending === 'z') {
     e.preventDefault();
-    clearTimeout(state.zTimer);
+    clearTimeout(state.keyTimer);
     state.pending = '';
     hint('');
     if (k === 't' || k === 'z' || k === 'b') scrollCursorTo(k);
@@ -1432,7 +1475,7 @@ function handleKey(e) {
     state.count = '';
     hint('z …');
     // z stops waiting after a moment, so a t pressed later opens the contents again
-    state.zTimer = setTimeout(() => { if (state.pending === 'z') { state.pending = ''; hint(''); } }, 1500);
+    state.keyTimer = setTimeout(() => { if (state.pending === 'z') { state.pending = ''; hint(''); } }, 1500);
     return;
   }
 
