@@ -36,6 +36,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `a` | highlight the selection and write a comment, or edit the comment of the selected mark; `Enter` in an empty box leaves a plain highlight |
 | `A` | add a reply to the selected comment (see "Reviewing with a coding assistant") |
 | `gn` | go to the next comment with a new reply |
+| `D` | show or hide the comments that are done |
 | `Ctrl` `Enter` | hand the comments over to the `just-doc --wait` that is waiting for them |
 | `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
@@ -216,10 +217,14 @@ note of the highlight.
 just-doc book.pdf --done 2
 ```
 
-marks comment 2 as done (`done` in the JSON file): it stays in the list, greyed,
-and its highlight leaves the page, because the text under it may have moved.
-Going to the comment (`n` / `p`, or a click in the list) shows the highlight
-again. `--done` can be combined with `--reply` and given several times.
+marks comment 2 as done (`done` in the JSON file). Its highlight leaves the
+page and it is greyed in the list. At your next `Ctrl+Enter` the done comments
+that you have looked at leave the list, so each round starts with what is
+still open; nothing leaves the list before that. `D` shows them again, and the
+top of the list says how many there are. The reply box (`A`) says whether the
+comment is open or done. Answering a done comment opens it again, so the next
+`--wait` prints it. `--done` can be combined
+with `--reply` and given several times.
 
 `--read` prints all comments with their replies, and marks each one that is
 `(done)` or `(answered)`.

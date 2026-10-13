@@ -154,7 +154,8 @@ def keep_replies(doc, annots):
         missing = [r for r in was.get("replies", []) if r not in a.get("replies", [])]
         if missing:
             a["replies"] = sorted(a.get("replies", []) + missing, key=lambda r: r.get("at", ""))
-        if was.get("done"):
+        # the window sets done to false when the author answers a comment that was done
+        if was.get("done") and "done" not in a:
             a["done"] = True
 
 
