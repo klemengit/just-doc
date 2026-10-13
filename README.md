@@ -35,6 +35,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 |---|---|
 | `a` | highlight the selection and write a comment, or edit the comment of the selected mark; `Enter` in an empty box leaves a plain highlight |
 | `A` | add a reply to the selected comment (see "Reviewing with a coding assistant") |
+| `gn` | go to the next comment with a new reply |
 | `Ctrl` `Enter` | hand the comments over to the `just-doc --wait` that is waiting for them |
 | `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
@@ -175,7 +176,10 @@ The round goes like this:
 2. You write comments and press `Ctrl+Enter`. The message at the bottom says
    whether somebody is waiting for them.
 3. The assistant replies. Each reply shows at once under its comment in the
-   list.
+   list. A blue mark in the toolbar counts the comments with a new reply, and
+   so do the tab and the title of the window; in the list they are blue.
+   `gn` goes to the next one, and a comment that you go to is no longer new.
+   While no reply has come, the mark says that the comments are handed over.
 4. To answer a reply, select the comment (`n` / `p`), press `A`, write, and
    press `Ctrl+Enter` again. The box shows the comment and the replies so far.
 5. When you agree, the assistant changes the source. The window loads the new

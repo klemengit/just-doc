@@ -9,6 +9,7 @@
   .tab { padding: 0 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
          border-right: 1px solid #45484d; }
   .tab.on { background: #525659; color: #fff; }
+  .tab b { background: #2f7bff; color: #fff; border-radius: 8px; padding: 0 6px; margin-left: 6px; font-size: 11px; }
   #keys { margin-left: auto; padding: 0 10px; white-space: nowrap; }
   kbd { font: 11px ui-monospace, monospace; background: #45484d; color: #e8e8e8; border-radius: 3px; padding: 0 4px; }
   iframe { position: absolute; left: 0; top: 22px; width: 100%; height: calc(100% - 22px); border: 0; visibility: hidden; }
@@ -27,6 +28,7 @@ const bar = document.getElementById('tabs');
 const frames = {};   // document id -> iframe
 let tabs = [], active = null;
 const revs = {};     // document id -> the state of its comments that its viewer shows
+const news = {};     // document id -> the number of its comments with a new reply
 const files = {};    // document id -> the state of its file that its viewer shows
 let opened = +(sessionStorage.getItem('opened') || -1);   // the last "open" request that was shown
 
@@ -35,10 +37,12 @@ function show(id) {
   active = id;
   sessionStorage.setItem('tab', id);
   for (const k in frames) frames[k].classList.toggle('on', k === id);
-  document.title = tabs.find(t => t.id === id).name + ' – just-doc';
   frames[id].contentWindow.focus();
   draw();
 }
+
+// the viewers report their new replies; the sum goes into the title, where the task bar shows it
+window.tabNews = (id, n) => { news[id] = n; draw(); };
 
 function draw() {
   bar.textContent = '';
@@ -46,6 +50,7 @@ function draw() {
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === active ? ' on' : '');
     el.textContent = t.name;
+    if (news[t.id]) { const b = document.createElement('b'); b.textContent = news[t.id]; el.appendChild(b); }
     el.title = t.path;
     el.onclick = () => show(t.id);
     bar.appendChild(el);
@@ -55,6 +60,8 @@ function draw() {
   keys.innerHTML = '<kbd>H</kbd>/<kbd>L</kbd> tab &nbsp;<kbd>Ctrl</kbd> <kbd>w</kbd> close';
   bar.appendChild(keys);
   document.body.classList.toggle('one', tabs.length < 2);
+  const all = tabs.reduce((sum, t) => sum + (news[t.id] || 0), 0), shown = tabs.find(t => t.id === active);
+  if (shown) document.title = (all ? `(${all}) ` : '') + shown.name + ' – just-doc';
 }
 
 // the server sends the list of documents when it changes
