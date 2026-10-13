@@ -138,6 +138,7 @@
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
     <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
+    <tr><td><kbd>zt</kbd> <kbd>zz</kbd> <kbd>zb</kbd></td><td>scroll the cursor line to the top / middle / bottom</td></tr>
     <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>previous / next page</td></tr>
     <tr><td><kbd>P</kbd></td><td>show one page at a time, fitted to the window; <kbd>P</kbd> again goes back</td></tr>
     <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
@@ -829,6 +830,17 @@ function showCursor() {
                   r.top < top ? r.top - top : r.bottom > bottom ? r.bottom - bottom : 0);
 }
 
+// scrolls so that the cursor line is at the top (t), in the middle (z) or at the bottom (b)
+function scrollCursorTo(where) {
+  if (state.mode === 'normal' && !placeCursor()) return;
+  const w = wordAt(state.cursor);
+  if (!w) return;
+  const r = charRect(w.node, w.s + state.cursor.o, w.s + state.cursor.o + 1);
+  const top = $('bar').offsetHeight + 12, bottom = window.innerHeight - $('foot').offsetHeight - 12;
+  window.scrollBy(0, where === 't' ? r.top - top : where === 'b' ? r.bottom - bottom : (r.top + r.bottom - top - bottom) / 2);
+  drawCursor();
+}
+
 // moves the cursor n times; returns false when there is no text to move on
 function moveCursor(key, n) {
   if (state.mode === 'normal') { if (!placeCursor()) return false; }
@@ -1394,6 +1406,25 @@ function handleKey(e) {
     state.pending = '';
     hint('');
     if (k !== 'Escape') textObject(k, around);
+    return;
+  }
+
+  // zt, zz and zb scroll so that the cursor line is at the top, the middle or the bottom
+  if (state.pending === 'z') {
+    e.preventDefault();
+    clearTimeout(state.zTimer);
+    state.pending = '';
+    hint('');
+    if (k === 't' || k === 'z' || k === 'b') scrollCursorTo(k);
+    return;
+  }
+  if (k === 'z') {
+    e.preventDefault();
+    state.pending = 'z';
+    state.count = '';
+    hint('z …');
+    // z stops waiting after a moment, so a t pressed later opens the contents again
+    state.zTimer = setTimeout(() => { if (state.pending === 'z') { state.pending = ''; hint(''); } }, 1500);
     return;
   }
 
