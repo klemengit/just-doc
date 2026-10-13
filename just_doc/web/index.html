@@ -72,6 +72,7 @@
             font: 14px/1.4 system-ui, sans-serif; }
   #editor small { color: #888; }
   ::highlight(find) { background-color: rgba(255, 150, 0, .38); }
+  ::highlight(pieces) { background-color: rgba(0, 0, 255, .25); }
   ::highlight(findcur) { background-color: rgba(225, 0, 110, .45); }
   #findbox { display: none; align-items: center; gap: 2px; color: #ffd166; flex: none; }
   #findbox.open { display: inline-flex; }
@@ -142,6 +143,8 @@
     <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
     <tr class="sub"><td>the keys above</td><td>extend the selection</td></tr>
     <tr class="sub"><td><kbd>o</kbd></td><td>move the other end of the selection</td></tr>
+    <tr class="sub"><td><kbd>iw</kbd> <kbd>is</kbd> <kbd>ip</kbd></td><td>select the word / sentence / paragraph at the cursor</td></tr>
+    <tr class="sub"><td><kbd>i(</kbd> <kbd>i[</kbd> <kbd>i{</kbd> <kbd>i"</kbd> <kbd>i'</kbd></td><td>select the text inside the brackets or quotes; <kbd>A(</kbd> takes them too</td></tr>
     <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>comment on / strike through the selection</td></tr>
     <tr><td><kbd>Ctrl</kbd> wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom around the pointer</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>export a copy of the PDF with the comments inside</td></tr>
@@ -163,7 +166,7 @@ const store = {
 };
 
 const state = { scale: store.get('scale', 1.5), annots: [], sel: null, undo: [], editing: null,
-                mode: 'normal', cursor: null, anchor: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0, cursorTo: null, back: [], fwd: [] };
+                mode: 'normal', cursor: null, anchor: null, pieces: null, pending: '', count: '', wantX: null, find: null, tocAt: 0, single: 0, scaleBefore: 0, cursorTo: null, back: [], fwd: [] };
 const dpr = window.devicePixelRatio || 1;
 const pagesEl = $('pages');
 const pgs = [];        // 1-based: page element
@@ -440,15 +443,35 @@ function select(id) {
   if (id) $('list').querySelector('.on')?.scrollIntoView({ block: 'nearest' });
 }
 
+// the selected text and its rectangles; a selection in pieces (see setPieces) is one text
 function captureSelection() {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-  const range = sel.getRangeAt(0);
+  const ranges = state.pieces || (sel && !sel.isCollapsed && sel.rangeCount ? [sel.getRangeAt(0)] : []);
+  const raw = [];
+  let text = '';
+  for (const range of ranges) text = captureRange(range, raw, text + ' ');
+  text = text.replace(/\s+/g, ' ').trim();
+  if (!raw.length || !text) return null;
+  // merge rectangles that lie on the same line
+  raw.sort((a, b) => a.p - b.p || a.y - b.y || a.x - b.x);
+  const rects = [];
+  for (const r of raw) {
+    const m = rects.find(q => q.p === r.p && Math.abs((q.y + q.h / 2) - (r.y + r.h / 2)) < Math.max(q.h, r.h) * 0.5
+                               && r.x <= q.x + q.w + 8 && r.x + r.w >= q.x - 8);
+    if (m) {
+      const x2 = Math.max(m.x + m.w, r.x + r.w), y2 = Math.max(m.y + m.h, r.y + r.h);
+      m.x = Math.min(m.x, r.x); m.y = Math.min(m.y, r.y); m.w = x2 - m.x; m.h = y2 - m.y;
+    } else rects.push({ ...r });
+  }
+  for (const r of rects) for (const k of ['x', 'y', 'w', 'h']) r[k] = Math.round(r[k] * 100) / 100;
+  return { text, rects };
+}
+
+// adds the rectangles of a range to raw and returns text with the text of the range added
+function captureRange(range, raw, text) {
   const rootNode = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer
                                                                 : range.commonAncestorContainer.parentNode;
   const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
-  const raw = [];
-  let text = '';
   let lastTop = null;
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     if (!range.intersectsNode(n)) continue;
@@ -471,21 +494,7 @@ function captureSelection() {
     }
     text += piece;
   }
-  text = text.replace(/\s+/g, ' ').trim();
-  if (!raw.length || !text) return null;
-  // merge rectangles that lie on the same line
-  raw.sort((a, b) => a.p - b.p || a.y - b.y || a.x - b.x);
-  const rects = [];
-  for (const r of raw) {
-    const m = rects.find(q => q.p === r.p && Math.abs((q.y + q.h / 2) - (r.y + r.h / 2)) < Math.max(q.h, r.h) * 0.5
-                               && r.x <= q.x + q.w + 8 && r.x + r.w >= q.x - 8);
-    if (m) {
-      const x2 = Math.max(m.x + m.w, r.x + r.w), y2 = Math.max(m.y + m.h, r.y + r.h);
-      m.x = Math.min(m.x, r.x); m.y = Math.min(m.y, r.y); m.w = x2 - m.x; m.h = y2 - m.y;
-    } else rects.push({ ...r });
-  }
-  for (const r of rects) for (const k of ['x', 'y', 'w', 'h']) r[k] = Math.round(r[k] * 100) / 100;
-  return { text, rects };
+  return text;
 }
 
 // ---------- rectangles: for figures, equations and code, where text cannot be selected ----------
@@ -557,6 +566,7 @@ function addFromSelection(kind) {
               comment: '', created: new Date().toISOString() };
   if (kind) a.kind = kind;
   state.annots.push(a);
+  setPieces(null);
   window.getSelection().removeAllRanges();
   state.sel = a.id;
   redraw();
@@ -620,7 +630,7 @@ function removeSelected() {
 
 const KEYS_NORMAL = $('keys').innerHTML;
 const KEYS_VISUAL = '<kbd>h</kbd>/<kbd>l</kbd> character &nbsp;<kbd>w</kbd>/<kbd>b</kbd>/<kbd>e</kbd> word &nbsp;<kbd>j</kbd>/<kbd>k</kbd> line &nbsp;'
-                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>Esc</kbd> cancel';
+                  + '<kbd>0</kbd>/<kbd>$</kbd> line start/end &nbsp;<kbd>iw</kbd> <kbd>is</kbd> <kbd>ip</kbd> <kbd>i(</kbd> object &nbsp;<kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>Esc</kbd> cancel';
 
 function setMode(m) {
   state.mode = m;
@@ -882,8 +892,18 @@ function startVisual(mode) {
   drawCursor();
 }
 
+// A sentence or a paragraph with a margin note between its lines is selected in pieces, so
+// that the note stays out. The browser selection is one stretch of text only, so the pieces
+// are painted as a highlight and kept in state.pieces until the selection changes.
+function setPieces(ranges) {
+  state.pieces = ranges;
+  if (!window.Highlight || !CSS.highlights) return;
+  if (ranges) CSS.highlights.set('pieces', new Highlight(...ranges)); else CSS.highlights.delete('pieces');
+}
+
 function exitVisual() {
   setMode('normal');
+  setPieces(null);
   window.getSelection().removeAllRanges();
   select(state.sel);
 }
@@ -891,6 +911,7 @@ function exitVisual() {
 // turn the anchor..cursor range into a real DOM selection, so a/s reuse the
 // normal capture path
 function applyVisual() {
+  setPieces(null);
   const a = state.anchor, c = state.cursor;
   if (!wordAt(a) || !wordAt(c)) { hint('selection is too long'); return; }
   const forward = a.p < c.p || (a.p === c.p && (a.i < c.i || (a.i === c.i && a.o <= c.o)));
@@ -909,6 +930,149 @@ function applyVisual() {
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+// ---------- text objects: iw, is, ip, i( and the like ----------
+// They select the thing around the cursor and stay on its page.
+
+const wordText = w => w.node.data.substr(w.s, w.n);
+
+// the lines of a page in reading order: {a, b} first and last word, x and x2 the left and right
+// end, y and h the height and text size of the widest word
+function pageLines(p) {
+  const ws = wordsForPage(p), lines = [];
+  ws.forEach((w, i) => {
+    const l = lines[lines.length - 1];
+    // an index or an exponent has its own line number, but continues the line to the right
+    let joins = l && (ws[l.b].line === w.line || (Math.abs(w.y - l.y) < Math.max(w.h, l.h) * 0.6 && w.x > l.x));
+    // a margin note at the same height is a line of its own: it starts left of the line, or
+    // far to the right in another text size
+    if (joins && (w.x < l.x - l.h || (Math.abs(w.h - l.h) > l.h * 0.12 && w.x - l.x2 > l.h * 2))) joins = false;
+    if (!joins) { lines.push({ a: i, b: i, x: w.x, x2: w.x + w.w, y: w.y, h: w.h, wide: w.w }); return; }
+    l.b = i;
+    l.x2 = Math.max(l.x2, w.x + w.w);
+    if (w.w > l.wide) { l.wide = w.w; l.y = w.y; l.h = w.h; }
+  });
+  return lines;
+}
+
+// A PDF has no paragraphs, so they are guessed: a paragraph starts after a larger gap, at a
+// change of the text size, at the top of a column and at a line with an indented start.
+// A margin note sits between the lines of the main text in the reading order, so the line
+// before and after a line is looked for in its own column. Returns the word numbers in order.
+function paragraphWords(pos) {
+  const lines = pageLines(pos.p);
+  const mate = (k, dir) => {
+    for (let j = k + dir; j >= 0 && j < lines.length && Math.abs(j - k) <= 40; j += dir) {
+      if (Math.min(lines[j].x2, lines[k].x2) > Math.max(lines[j].x, lines[k].x)) return j;
+    }
+    return -1;
+  };
+  // the usual distance between two lines of text of the height h: the most frequent one
+  const pitch = h => {
+    const alike = l => Math.abs(l.h - h) < h * 0.12, seen = {};
+    let best = Infinity;
+    lines.forEach((m, k) => {
+      const j = mate(k, -1), d = j < 0 ? 0 : Math.round((m.y - lines[j].y) * 2) / 2;
+      if (d <= h * 0.6 || !alike(m) || !alike(lines[j])) return;
+      seen[d] = (seen[d] || 0) + 1;
+      if (best === Infinity || seen[d] > seen[best] || (seen[d] === seen[best] && d < best)) best = d;
+    });
+    return best;
+  };
+  const starts = k => {
+    const j = mate(k, -1), o = mate(k, 1);
+    if (j < 0) return true;
+    const l = lines[j], m = lines[k], n = lines[o], dy = m.y - l.y, gap = pitch(m.h) * 1.25;
+    if (dy < -l.h) return true;
+    if (Math.abs(m.h - l.h) > l.h * 0.12 || dy > gap) return true;
+    return m.x - l.x > m.h * 0.8 && !!n && n.y - m.y > 0 && n.y - m.y <= gap && n.x < m.x - m.h * 0.5;
+  };
+  const at = lines.findIndex(l => pos.i >= l.a && pos.i <= l.b), chain = [at];
+  for (let k = at; !starts(k);) chain.unshift(k = mate(k, -1));
+  for (let k = mate(at, 1); k >= 0 && !starts(k); k = mate(k, 1)) chain.push(k);
+  return chain.flatMap(k => Array.from({ length: lines[k].b - lines[k].a + 1 }, (_, n) => lines[k].a + n));
+}
+
+const ABBREVIATION = /^\W*(e\.g|i\.e|figs?|eqs?|secs?|refs?|tabs?|cf|vs|al|no|dr|prof|approx|ch|pp?|\p{Lu})\.$/iu;
+
+// a sentence ends at . ? or ! before a capital letter, and at the end of its paragraph
+function sentenceWords(pos) {
+  const ws = wordsForPage(pos.p), ids = paragraphWords(pos), text = k => wordText(ws[ids[k]]);
+  const ends = k => k >= ids.length - 1 || (/[.?!][)\]"'”’]*$/.test(text(k)) && !ABBREVIATION.test(text(k))
+                                            && /^[(\["'“‘]*\p{Lu}/u.test(text(k + 1)));
+  let a = ids.indexOf(pos.i), b = a;
+  while (a > 0 && !ends(a - 1)) a--;
+  while (!ends(b)) b++;
+  return ids.slice(a, b + 1);
+}
+
+const PAIRS = { '(': '()', ')': '()', b: '()', '[': '[]', ']': '[]', '{': '{}', '}': '{}', B: '{}', '<': '<>', '>': '<>' };
+const QUOTES = { '"': ['"“„«', '"”“»'], "'": ["'‘‚", "'’‘"], '`': ['`', '`'] };
+
+// the characters between the brackets or quotes around the position, as flat positions
+function pairSpan(pos, key, around) {
+  const ws = wordsForPage(pos.p), flat = [];
+  ws.forEach((w, i) => { for (let o = 0; o < w.n; o++) flat.push({ p: pos.p, i, o, ch: w.node.data[w.s + o] }); });
+  const c = flat.findIndex(f => f.i === pos.i && f.o === pos.o);
+  let open = -1, close = -1;
+  if (PAIRS[key]) {
+    const [l, r] = PAIRS[key];
+    for (let j = c, depth = 0; j >= 0 && open < 0; j--) {
+      if (flat[j].ch === r && j !== c) depth++;
+      else if (flat[j].ch === l) { if (depth) depth--; else open = j; }
+    }
+    for (let j = open + 1, depth = 0; open >= 0 && j < flat.length && close < 0; j++) {
+      if (flat[j].ch === l) depth++;
+      else if (flat[j].ch === r) { if (depth) depth--; else close = j; }
+    }
+  } else {
+    const [l, r] = QUOTES[key];
+    // on a quote that both opens and closes, the number of quotes before it tells which it is
+    const ch = flat[c].ch, both = l.includes(ch) && r.includes(ch);
+    const closing = r.includes(ch) && (!both || flat.slice(0, c).filter(f => f.ch === ch).length % 2 === 1);
+    for (let j = closing ? c - 1 : c; j >= 0 && open < 0; j--) if (l.includes(flat[j].ch)) open = j;
+    for (let j = open + 1; open >= 0 && j < flat.length && close < 0; j++) if (r.includes(flat[j].ch)) close = j;
+  }
+  if (close < 0 || close < c) return null;
+  if (!around) { open++; close--; }
+  return open > close ? null : [flat[open], flat[close]];
+}
+
+// selects the object named by key around the cursor; around takes the brackets or quotes too
+function textObject(key, around) {
+  const c = state.cursor, ws = wordsForPage(c.p);
+  if (!wordAt(c)) return;
+  let ends = null;
+  const runs = [];
+  if (key === 'w') ends = [c.i, c.i];
+  else if (key === 's' || key === 'p') {
+    const ids = key === 's' ? sentenceWords(c) : paragraphWords(c);
+    ends = [ids[0], ids[ids.length - 1]];
+    // the stretches of words that follow each other in the text layer
+    for (const i of ids) { const r = runs[runs.length - 1]; if (r && r[1] === i - 1) r[1] = i; else runs.push([i, i]); }
+  }
+  if (ends) ends = [{ p: c.p, i: ends[0], o: 0 }, { p: c.p, i: ends[1], o: ws[ends[1]].n - 1 }];
+  else if (PAIRS[key] || QUOTES[key]) {
+    ends = pairSpan(c, key, around);
+    if (!ends) { hint(`no ${PAIRS[key] || key + ' ' + key} around the cursor`); return; }
+  } else return;
+  state.anchor = { p: ends[0].p, i: ends[0].i, o: ends[0].o };
+  state.cursor = { p: ends[1].p, i: ends[1].i, o: ends[1].o };
+  state.wantX = null;
+  setMode('visual');
+  applyVisual();
+  if (runs.length > 1) {
+    window.getSelection().removeAllRanges();
+    setPieces(runs.map(([a, b]) => {
+      const range = document.createRange();
+      range.setStart(ws[a].node, ws[a].s);
+      range.setEnd(ws[b].node, ws[b].s + ws[b].n);
+      return range;
+    }));
+  }
+  showCursor();
+  drawCursor();
 }
 
 function visualKey(e, n) {
@@ -935,6 +1099,8 @@ function visualKey(e, n) {
       if (a) openEditor(a.id, true); else hint('nothing selected');
     } return;
     case 's': e.preventDefault(); if (!addFromSelection('strike')) hint('nothing selected'); exitVisual(); return;
+    // a is taken by the comment, so "around" is the capital A
+    case 'i': case 'A': e.preventDefault(); state.pending = k; hint(k + ' …'); return;
   }
 }
 
@@ -1220,6 +1386,16 @@ function tocKey(e) {
 function handleKey(e) {
   const k = e.key, lower = k.toLowerCase();
   if (k === 'Shift' || k === 'CapsLock' || k === 'AltGraph') return;
+
+  // the key after i or A in visual mode names a text object
+  if (state.mode !== 'normal' && (state.pending === 'i' || state.pending === 'A')) {
+    e.preventDefault();
+    const around = state.pending === 'A';
+    state.pending = '';
+    hint('');
+    if (k !== 'Escape') textObject(k, around);
+    return;
+  }
 
   // a number typed first is a page for G / gg and a repeat count for the moves
   if (/^[0-9]$/.test(k) && (state.count || k !== '0')) {

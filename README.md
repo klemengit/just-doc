@@ -79,6 +79,30 @@ lines. The same keys then extend the selection, also onto the next page, and
 `o` switches to its other end. Press `a` to comment on the selection or `s` to
 strike it through. `Esc` cancels.
 
+In a selection, `i` and one more key select the thing around the cursor:
+
+| keys | select |
+|---|---|
+| `iw` | the word |
+| `is` | the sentence |
+| `ip` | the paragraph |
+| `i(` `i[` `i{` `i<` | the text inside the brackets around the cursor |
+| `i"` `i'` | the text inside the quotes, straight or typographic |
+
+So `vis` `a` comments on the sentence under the cursor. The selection can be
+extended with the usual keys afterwards.
+
+In vim, `a` is the "around" form (`va(` takes the brackets too). Here `a` in a
+selection writes the comment, so `va(` does not exist; the capital `A` takes
+its place: `vA(`, `vA"`.
+
+A sentence ends at `.`, `?` or `!` before a capital letter, so it can stop too
+early after an abbreviation that is not known. A PDF stores lines and not
+paragraphs, so a paragraph is guessed from a larger gap between lines, an
+indented first line or a change of the text size. Both stay on one page. A
+margin note next to the text is left out of the sentence or paragraph, and it
+is a paragraph of its own.
+
 `c` and `P` remember their state between runs.
 
 In the single page view, `j` on the last line and `k` on the first line turn
