@@ -13,6 +13,13 @@ Usage
                                  book.synctex.gz is next to the PDF)
     just-doc book.pdf --export   write book.commented.pdf with the comments
                                  as ordinary PDF annotations
+    just-doc book.pdf --wait     open it, wait for Ctrl+Enter in the window,
+                                 then print the comments
+    just-doc book.pdf --reply 2 "text"
+                                 add a reply to comment 2
+    just-doc book.pdf --done 2   mark comment 2 as done
+    just-doc --guide             print how a coding assistant uses the three
+                                 commands above to review a document with you
 """
 import argparse
 import getpass
@@ -24,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -35,6 +43,57 @@ WEB = Path(__file__).resolve().parent / "web"
 PORT = 8700
 MARKDOWN = (".md", ".markdown")
 MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
+WRITING = threading.Lock()   # held while the comments file is read, changed and written back
+GUIDE = """\
+just-doc: review a document together with its author
+
+The author reads a PDF or a markdown file in the just-doc window and writes
+comments on pieces of its text. You answer the comments and fix the source.
+Everything goes through these commands; do not edit the .comments.json file.
+
+1. Open the document and wait for the comments:
+
+       just-doc FILE --wait
+
+   The command opens the window if needed and blocks until the author presses
+   Ctrl+Enter there. It then prints the open comments and ends. If your shell
+   limits the run time, add --timeout SECONDS (below the limit) and run the
+   command again when it reports that nothing came; a Ctrl+Enter pressed in
+   between is kept. Run it in the background if you can.
+
+2. Read the comments. Each one looks like this:
+
+       [3] p. 12  chapter.tex:140
+           text:    the selected text
+           comment: what the author says about it
+           reply (NAME): an earlier reply
+           reply (author): the author's answer to it
+
+   3 is the number of the comment, p. 12 the page, and chapter.tex:140 the
+   place in the source when it is known (for markdown, and for LaTeX with
+   SyncTeX). "delete:" instead of "text:" means that the author wants this
+   text removed. "area:" is a rectangle around a figure, an equation or code.
+   A comment without words is a plain highlight: ask what is meant.
+
+3. Answer every open comment, in the language of the comment, in a sentence
+   or two; the list in the window is narrow:
+
+       just-doc FILE --reply 3 "text" --reply 5 "text" --from NAME
+
+   The replies show in the window at once. Ask there when a comment is not
+   clear. Do not change the source for a comment that asks a question or that
+   you disagree with: reply and wait for the answer.
+
+4. When a comment asks for a change, change the source file (for LaTeX,
+   compile it again). Then say what you did and mark the comment as done:
+
+       just-doc FILE --reply 3 "what was changed" --done 3 --from NAME
+
+5. Go back to step 1, until the author says that the review is over.
+
+Other commands: just-doc FILE --read prints all comments, also the ones that
+are done or answered; add --json for the full data.
+"""
 BROWSERS = ("chromium", "brave", "google-chrome-stable", "google-chrome", "chromium-browser")
 
 
@@ -48,6 +107,52 @@ def load_comments(doc):
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {"annots": []}
+
+
+def save_comments(doc, annots):
+    out = {"source": doc.name, "annots": annots}
+    tmp = comments_path(doc).with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, comments_path(doc))
+
+
+def find_comment(doc, annots, ref):
+    """Return the comment ``ref``: its number in the file or its id."""
+    for a in annots:
+        if a.get("id") == ref:
+            return a
+    if ref.isdigit() and 0 < int(ref) <= len(annots):
+        return annots[int(ref) - 1]
+    raise RuntimeError(f"no comment {ref} in {comments_path(doc).name}")
+
+
+def answer(doc, ref, text, name):
+    """Add a reply to the comment ``ref``; without a text mark the comment as done."""
+    with WRITING:
+        annots = load_comments(doc)["annots"]
+        a = find_comment(doc, annots, ref)
+        if text is None:
+            a["done"] = True
+        else:
+            a.setdefault("replies", []).append(
+                {"from": name, "text": text, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        save_comments(doc, annots)
+
+
+def keep_replies(doc, annots):
+    """Put the replies and done marks that are in the file but not in ``annots`` back in.
+
+    The window sends the whole list after each change; a reply that was added
+    from outside a moment before is not in it yet.
+    """
+    old = {a.get("id"): a for a in load_comments(doc)["annots"]}
+    for a in annots:
+        was = old.get(a.get("id"), {})
+        missing = [r for r in was.get("replies", []) if r not in a.get("replies", [])]
+        if missing:
+            a["replies"] = sorted(a.get("replies", []) + missing, key=lambda r: r.get("at", ""))
+        if was.get("done"):
+            a["done"] = True
 
 
 def cache_dir():
@@ -151,8 +256,9 @@ def export(doc):
                     annot[NameObject("/Subtype")] = NameObject("/StrikeOut")
                     annot[NameObject("/C")] = ArrayObject(FloatObject(v) for v in (0.82, 0.0, 0.0))
             annot[NameObject("/T")] = author
-            if a["comment"] and k == 0:
-                annot[NameObject("/Contents")] = TextStringObject(a["comment"])
+            said = [a["comment"]] + [f"{r.get('from') or author}: {r['text']}" for r in a.get("replies", [])]
+            if any(said) and k == 0:
+                annot[NameObject("/Contents")] = TextStringObject("\n\n".join(t for t in said if t))
             writer.add_annotation(page_number=number - 1, annotation=annot)
             count += 1
     out = export_path(doc)
@@ -169,6 +275,10 @@ class Tabs:
         self.opened = 0      # counts the open requests, so the window shows each one once
         self.version = 0     # counts every change of the list
         self.windows = 0     # windows that are listening for changes
+        self.rev = {}        # id -> counts the changes of the comments that did not come from the window
+        self.handed = {}     # id -> how often Ctrl+Enter was pressed in the document
+        self.taken = {}      # id -> how many of those a --wait has seen
+        self.waiting = {}    # id -> the --wait commands that are waiting now
         self.changed = threading.Condition()
 
     def open(self, doc):
@@ -186,8 +296,39 @@ class Tabs:
                 self.version += 1
                 self.changed.notify_all()
 
+    def touch(self, key):
+        """Tell the window that the comments of a document were changed from outside."""
+        with self.changed:
+            self.rev[key] = self.rev.get(key, 0) + 1
+            self.version += 1
+            self.changed.notify_all()
+
+    def hand(self, key):
+        """Note a Ctrl+Enter; return whether a --wait is there to get it."""
+        with self.changed:
+            self.handed[key] = self.handed.get(key, 0) + 1
+            self.changed.notify_all()
+            return self.waiting.get(key, 0) > 0
+
+    def wait(self, key, seconds):
+        """Wait for a Ctrl+Enter that no --wait has seen yet; False when none came in time."""
+        end = time.monotonic() + seconds
+        with self.changed:
+            self.waiting[key] = self.waiting.get(key, 0) + 1
+            try:
+                while self.handed.get(key, 0) <= self.taken.get(key, 0):
+                    left = end - time.monotonic()
+                    if left <= 0 or key not in self.docs:
+                        return False
+                    self.changed.wait(left)
+                self.taken[key] = self.handed[key]
+                return True
+            finally:
+                self.waiting[key] -= 1
+
     def listing(self):
-        tabs = [{"id": key, "name": doc.name, "path": str(doc)} for key, doc in self.docs.items()]
+        tabs = [{"id": key, "name": doc.name, "path": str(doc), "rev": self.rev.get(key, 0)}
+                for key, doc in self.docs.items()]
         return {"tabs": tabs, "focus": self.focus, "opened": self.opened}
 
 
@@ -246,7 +387,7 @@ def make_handler(tabs):
                     tabs.windows -= 1
 
         def do_GET(self):
-            route, _, doc = self._route()
+            route, key, doc = self._route()
             if route == "/api/events":
                 self._events()
             elif route == "/api/tabs":
@@ -254,7 +395,7 @@ def make_handler(tabs):
             elif route in ("/", "/view"):
                 self.path = "/tabs.html" if route == "/" else "/index.html"
                 super().do_GET()
-            elif route in ("/doc", "/api/info", "/api/annotations") and doc is None:
+            elif route in ("/doc", "/api/info", "/api/annotations", "/api/wait") and doc is None:
                 self._json(404, {"error": "this document is not open"})
             elif route == "/doc":
                 try:
@@ -267,6 +408,10 @@ def make_handler(tabs):
                 self._json(200, {"name": doc.name, "path": str(doc)})
             elif route == "/api/annotations":
                 self._json(200, load_comments(doc))
+            elif route == "/api/wait":
+                # answers within half a minute, so the command notices when just-doc is gone
+                seconds = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("s", ["25"])[0]
+                self._json(200, {"done": tabs.wait(key, min(25.0, float(seconds)))})
             else:
                 super().do_GET()
 
@@ -297,8 +442,24 @@ def make_handler(tabs):
                 tabs.close(key)
                 self._json(200, {"ok": True})
                 return
-            if route not in ("/api/export", "/api/annotations") or doc is None:
+            if route not in ("/api/export", "/api/annotations", "/api/reply", "/api/done") or doc is None:
                 self._json(404, {"error": "not found"})
+                return
+            if route == "/api/done":
+                self._json(200, {"ok": True, "listening": tabs.hand(key)})
+                return
+            if route == "/api/reply":
+                try:
+                    if self.headers.get("Content-Type") != "application/json":
+                        raise ValueError("JSON expected")
+                    obj = self._body()
+                    text = obj.get("text")
+                    answer(doc, str(obj["ref"]), None if text is None else str(text), str(obj.get("from", "")))
+                except Exception as exc:  # noqa: BLE001
+                    self._json(400, {"error": str(exc)})
+                    return
+                tabs.touch(key)
+                self._json(200, {"ok": True})
                 return
             if route == "/api/export":
                 try:
@@ -315,11 +476,10 @@ def make_handler(tabs):
             except Exception as exc:  # noqa: BLE001
                 self._json(400, {"error": str(exc)})
                 return
-            out = {"source": doc.name, "annots": obj["annots"]}
-            tmp = comments_path(doc).with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-            os.replace(tmp, comments_path(doc))
-            self._json(200, {"ok": True, "n": len(out["annots"])})
+            with WRITING:
+                keep_replies(doc, obj["annots"])
+                save_comments(doc, obj["annots"])
+            self._json(200, {"ok": True, "n": len(obj["annots"])})
 
         def end_headers(self):
             self.send_header("Cache-Control", "no-store")
@@ -360,6 +520,90 @@ def hand_over(url, doc):
             return json.loads(resp.read())["windows"]
     except urllib.error.HTTPError as exc:
         raise RuntimeError(json.loads(exc.read()).get("error", str(exc))) from exc
+
+
+def ask(url, body=None, timeout=5):
+    """Send a request to a running just-doc and return its JSON answer."""
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(json.loads(exc.read()).get("error", str(exc))) from exc
+
+
+def running(doc, port):
+    """Find the just-doc that has ``doc`` open.
+
+    Returns its address, the id of the tab and the number of its windows, or None.
+    """
+    first = port or PORT
+    for candidate in range(first, first + 20):
+        url = f"http://127.0.0.1:{candidate}/"
+        try:
+            state = ask(url + "api/tabs", timeout=1)
+        except Exception:  # noqa: BLE001
+            continue
+        for tab in state.get("tabs", []) if state.get("app") == "just-doc" else []:
+            if tab["path"] == str(doc):
+                return url, tab["id"], state["windows"]
+    return None
+
+
+def reply(doc, replies, done, name, port):
+    """Add replies to comments and mark comments as done.
+
+    This goes through the running just-doc, so that its window shows them.
+    """
+    found = running(doc, port)
+    annots = load_comments(doc)["annots"]
+    # numbers are taken as they are now, also when a new comment comes in between
+    changes = [(find_comment(doc, annots, ref).get("id", ref), text) for ref, text in replies]
+    changes += [(find_comment(doc, annots, ref).get("id", ref), None) for ref in done]
+    for ref, text in changes:
+        if found:
+            ask(f"{found[0]}api/reply?d={found[1]}", {"ref": ref, "text": text, "from": name})
+        else:
+            answer(doc, ref, text, name)
+    print(f"{len(replies)} reply(ies), {len(done)} done -> {comments_path(doc).name}"
+          + ("" if found else " (not open in a window)"))
+
+
+def wait(doc, port, window, as_json, limit):
+    """Open ``doc`` if it is not open, wait for Ctrl+Enter in its window, then print the comments."""
+    found = running(doc, port)
+    if found and window and not found[2]:
+        open_window(found[0])
+    if not found:
+        # a just-doc of its own, which stays when this command ends
+        shown_pdf(doc)
+        cmd = [sys.executable, "-c", "import just_doc; just_doc.main()", str(doc)]
+        cmd += (["--port", str(port)] if port else []) + ([] if window else ["--no-window"])
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        for _ in range(100):
+            time.sleep(0.1)
+            found = running(doc, port)
+            if found:
+                break
+        else:
+            raise RuntimeError("could not open the document")
+    url, key, _ = found
+    print(f"{doc.name}: waiting for Ctrl+Enter in the window, {url}", flush=True)
+    end = time.monotonic() + limit if limit else None
+    while True:
+        left = min(25, end - time.monotonic()) if end else 25
+        if left <= 0:
+            print("no Ctrl+Enter yet; run the same command again to keep waiting")
+            sys.exit(2)
+        try:
+            if ask(f"{url}api/wait?d={key}&s={left:.0f}", timeout=60)["done"]:
+                break
+        except RuntimeError as exc:
+            raise RuntimeError("the tab was closed") from exc
+        except OSError as exc:
+            raise RuntimeError("just-doc was stopped") from exc
+    read(doc, as_json, only_open=True)
 
 
 def serve(doc, port, window):
@@ -435,32 +679,67 @@ def markdown_lines(doc, annots):
         a["source"] = f"{doc.name}:{lines[at]}" + (f" (first of {count} places)" if count > 1 else "")
 
 
-def read(doc, as_json):
+def is_open(a):
+    """Whether the comment waits for a reply: not done, and the author spoke last."""
+    replies = a.get("replies", [])
+    return not a.get("done") and (not replies or not replies[-1].get("from"))
+
+
+def read(doc, as_json, only_open=False):
     annots = load_comments(doc)["annots"]
     if doc.suffix.lower() in MARKDOWN:
         markdown_lines(doc, annots)
     else:
         for a in annots:
             a["source"] = source_line(doc, a["rects"][0], centre=a.get("kind") == "box")
-    if as_json:
-        print(json.dumps(annots, ensure_ascii=False, indent=1))
-        return
     for i, a in enumerate(annots, 1):
+        a["number"], a["open"] = i, is_open(a)
+    shown = [a for a in annots if a["open"] or not only_open]
+    if as_json:
+        print(json.dumps(shown, ensure_ascii=False, indent=1))
+        return
+    for a in shown:
+        i = a["number"]
         where = f"p. {a['rects'][0]['p']}" + (f"  {a['source']}" if a["source"] else "")
         kind = {"box": "area", "strike": "delete"}.get(a.get("kind"), "text")
-        print(f"[{i}] {where}\n    {kind + ':':<8} {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}\n")
-    print(f"{len(annots)} comment(s) in {comments_path(doc).name}")
+        where += "  (done)" if a.get("done") else "" if a["open"] or only_open else "  (answered)"
+        print(f"[{i}] {where}\n    {kind + ':':<8} {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}")
+        for r in a.get("replies", []):
+            print(f"    reply ({r.get('from') or 'author'}): {r['text']}")
+        print()
+    if only_open:
+        print(f"{len(shown)} open comment(s), {len(annots) - len(shown)} done or answered ({doc.name} --read shows all)")
+        print(f'Answer:  just-doc {doc.name} --reply N "text" [--done N] --from NAME   then  just-doc {doc.name} --wait')
+        print("How this works:  just-doc --guide")
+    else:
+        print(f"{len(annots)} comment(s) in {comments_path(doc).name}")
 
 
 def main():
     ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF or a markdown file; comments are saved as JSON.")
-    ap.add_argument("pdf", type=Path, metavar="file", help="a PDF or a markdown file")
+    ap.add_argument("pdf", type=Path, metavar="file", nargs="?", help="a PDF or a markdown file")
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
-    ap.add_argument("--json", action="store_true", help="with --read: print JSON")
+    ap.add_argument("--json", action="store_true", help="with --read or --wait: print JSON")
+    ap.add_argument("--wait", action="store_true",
+                    help="open the file, wait for Ctrl+Enter in the window, then print the comments")
+    ap.add_argument("--timeout", type=float, default=0, metavar="SECONDS",
+                    help="with --wait: give up after this time (exit status 2); the default is to wait without end")
+    ap.add_argument("--guide", action="store_true",
+                    help="print how a coding assistant reviews a document with you through just-doc")
+    ap.add_argument("--reply", nargs=2, action="append", metavar=("N", "TEXT"),
+                    help="add a reply to comment N (its number in --read, or its id); can be given several times")
+    ap.add_argument("--done", action="append", metavar="N", default=[],
+                    help="mark comment N as done: its highlight leaves the page; can be given several times")
+    ap.add_argument("--from", dest="name", default="reply", metavar="NAME", help="with --reply: the name on the reply")
     ap.add_argument("--export", action="store_true", help="write <name>.commented.pdf with the comments inside")
     ap.add_argument("--port", type=int, default=0, help=f"port (default: {PORT})")
     ap.add_argument("--no-window", action="store_true", help="start the server only")
     args = ap.parse_args()
+    if args.guide:
+        print(GUIDE, end="")
+        return
+    if args.pdf is None:
+        ap.error("the file is missing")
     doc = args.pdf.resolve()
     if not doc.is_file():
         sys.exit(f"not found: {doc}")
@@ -468,6 +747,10 @@ def main():
         if args.export:
             out, count = export(doc)
             print(f"{count} annotation(s) -> {out}")
+        elif args.reply or args.done:
+            reply(doc, args.reply or [], args.done, args.name, args.port)
+        elif args.wait:
+            wait(doc, args.port, not args.no_window, args.json, args.timeout)
         elif args.read:
             read(doc, args.json)
         else:

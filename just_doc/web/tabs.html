@@ -26,6 +26,7 @@
 const bar = document.getElementById('tabs');
 const frames = {};   // document id -> iframe
 let tabs = [], active = null;
+const revs = {};     // document id -> the state of its comments that its viewer shows
 let opened = +(sessionStorage.getItem('opened') || -1);   // the last "open" request that was shown
 
 function show(id) {
@@ -65,6 +66,11 @@ function sync(msg) {
     f.src = 'view?d=' + t.id;
     f.onload = () => { if (active === t.id) f.contentWindow.focus(); };
     document.body.appendChild(f);
+  }
+  // comments that were changed from outside (a reply): the viewer reads them again
+  for (const t of tabs) {
+    if (t.id in revs && revs[t.id] !== t.rev) frames[t.id].contentWindow.reloadAnnots?.();
+    revs[t.id] = t.rev;
   }
   for (const id in frames) if (!tabs.some(t => t.id === id)) { frames[id].remove(); delete frames[id]; }
   if (!tabs.length) { draw(); return; }

@@ -24,6 +24,11 @@ Everything is shortcut driven. Every action has a key, and a new feature gets a
 key too, not only a button or a menu. Add the key to the hint bar at the bottom
 of the window and to the table in `README.md`.
 
+The review with a coding assistant (`--wait`, `--reply`, `--done`) must work
+with any assistant that can run shell commands. `--guide` prints its
+instructions (`GUIDE` in `__init__.py`); keep them and the output of `--wait`
+complete enough that an assistant needs nothing else.
+
 ## Constraints
 
 - Python 3.9 or newer.

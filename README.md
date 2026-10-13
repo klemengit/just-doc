@@ -9,6 +9,9 @@ just-doc book.pdf          # open for commenting
 just-doc book.pdf --read   # print the comments
 just-doc book.pdf --export # write book.commented.pdf with the comments inside
 just-doc notes.md          # a markdown file works the same way
+just-doc book.pdf --wait   # open it, wait for Ctrl+Enter, then print the comments
+just-doc book.pdf --reply 2 "text"   # add a reply to comment 2
+just-doc --guide           # how a coding assistant reviews a document with you
 ```
 
 ## Install
@@ -31,6 +34,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | key | action |
 |---|---|
 | `a` | highlight the selection and write a comment, or edit the comment of the selected mark; `Enter` in an empty box leaves a plain highlight |
+| `A` | add a reply to the selected comment (see "Reviewing with a coding assistant") |
+| `Ctrl` `Enter` | hand the comments over to the `just-doc --wait` that is waiting for them |
 | `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
 | `d` | delete the selected highlight or rectangle (click it first) |
@@ -147,6 +152,68 @@ change. Each entry holds the selected `text`, the `comment`, and `rects`: page
 number `p` and position in PDF points measured from the top-left corner.
 An entry with `kind` `strike` is struck-through text that should be deleted,
 and `kind` `box` is a rectangle; an entry without `kind` is a highlight.
+
+A comment can have `replies`, a list of entries with `text`, the time `at` and
+`from`, the name given with `--reply`. A reply without `from` was written in
+the window.
+
+## Reviewing with a coding assistant
+
+A coding assistant (Claude Code, opencode, pi or any other that can run shell
+commands) can answer your comments in the window and fix the source, so the
+whole review happens in just-doc. Tell it:
+
+> Run `just-doc --guide`, then review `notes.md` with me.
+
+`just-doc --guide` prints the instructions for the assistant: which commands
+to run and how to read their output. Nothing is set up for a particular
+assistant; it only runs the three commands below.
+
+The round goes like this:
+
+1. The assistant runs `just-doc notes.md --wait`. The window opens.
+2. You write comments and press `Ctrl+Enter`. The message at the bottom says
+   whether somebody is waiting for them.
+3. The assistant replies. Each reply shows at once under its comment in the
+   list.
+4. To answer a reply, select the comment (`n` / `p`), press `A`, write, and
+   press `Ctrl+Enter` again. The box shows the comment and the replies so far.
+5. When you agree, the assistant changes the source and marks the comment as
+   done.
+
+### The commands
+
+```bash
+just-doc book.pdf --wait
+```
+
+opens the document if it is not open, waits for `Ctrl+Enter` in the window,
+prints the open comments and ends. A comment is open when it is not done and
+you spoke last. A `Ctrl+Enter` pressed while nobody waits is kept for the next
+`--wait`. With `--timeout 100` the command gives up after 100 seconds with
+exit status 2, for an assistant whose shell limits the run time; it then runs
+the command again.
+
+```bash
+just-doc book.pdf --reply 2 "it converges only for a simple root" --from Ana
+```
+
+adds a reply to comment 2: its number in the `--read` output, or its `id` from
+`--read --json`. `--from` is the name shown on the reply. `--reply` can be
+given several times in one command. The export writes the replies into the
+note of the highlight.
+
+```bash
+just-doc book.pdf --done 2
+```
+
+marks comment 2 as done (`done` in the JSON file): it stays in the list, greyed,
+and its highlight leaves the page, because the text under it may have moved.
+Going to the comment (`n` / `p`, or a click in the list) shows the highlight
+again. `--done` can be combined with `--reply` and given several times.
+
+`--read` prints all comments with their replies, and marks each one that is
+`(done)` or `(answered)`.
 
 ## Sharing the comments
 
