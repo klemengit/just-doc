@@ -240,7 +240,8 @@ version:
   new place.
 - Text that was changed is found by the text around it. What stands there
   now is marked green, and the list shows both: ~~«teh»~~ → «the». `--read`
-  prints the new text and the old one.
+  prints the new text and the old one. The reply box (`A`) shows the old text
+  in its first line, above the replies.
 - When the text around it is gone too, the comment keeps its old place and
   the list says "text not found".
 

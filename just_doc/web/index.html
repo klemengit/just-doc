@@ -93,6 +93,9 @@
                     font-size: 11px; font-weight: 700; }
   #ethread .state.done { background: #c9f2c9; color: #14601f; }
   #ethread .mine { font-weight: 600; }
+  #ethread .was { position: sticky; top: 0; clear: both; margin: 0 0 4px; padding: 3px 6px; border-radius: 3px;
+                  background: #f1f1f1; color: #555; }
+  #ethread .was i { color: #888; }
   ::highlight(find) { background-color: rgba(255, 150, 0, .38); }
   ::highlight(pieces) { background-color: rgba(0, 0, 255, .25); }
   ::highlight(findcur) { background-color: rgba(225, 0, 110, .45); }
@@ -888,6 +891,14 @@ function openEditor(id, fresh = false, reply = false) {
     d.className = a.done ? 'state done' : 'state';
     d.textContent = a.done ? 'done ✓' : 'open';
     thread.append(d);
+    if (a.was !== undefined) {
+      // the text as it was before it changed; it stays in view above the replies
+      const w = document.createElement('div'), i = document.createElement('i');
+      w.className = 'was';
+      i.textContent = 'before ';
+      w.append(i, '«' + a.was + '»');
+      thread.append(w);
+    }
   }
   for (const r of reply ? [{ text: a.comment }, ...(a.replies || [])] : []) {
     if (!r.text) continue;
