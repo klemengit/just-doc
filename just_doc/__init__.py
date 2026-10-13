@@ -754,6 +754,28 @@ def serve(doc, port, window):
     sys.exit("no free port found")
 
 
+def show(port, window):
+    """Print the documents of every running just-doc; open a window for one that has none."""
+    first, found = port or PORT, False
+    for candidate in range(first, first + 20):
+        url = f"http://127.0.0.1:{candidate}/"
+        try:
+            state = ask(url + "api/tabs", timeout=1)
+        except Exception:  # noqa: BLE001
+            continue
+        if state.get("app") != "just-doc":
+            continue
+        found = True
+        opens = window and not state["windows"]
+        print(f"{url}  ({'no window, opening one' if opens else 'its window is open' if state['windows'] else 'no window'})")
+        for tab in state["tabs"]:
+            print(f"  {tab['path']}")
+        if opens:
+            open_window(url)
+    if not found:
+        sys.exit("no just-doc is running; start one with: just-doc FILE")
+
+
 def source_line(doc, rect, centre=False):
     """Map a highlight to ``file:line`` in the TeX source via SyncTeX, if available.
 
@@ -841,7 +863,7 @@ def read(doc, as_json, only_open=False):
 
 def main():
     ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF or a markdown file; comments are saved as JSON.")
-    ap.add_argument("pdf", type=Path, metavar="file", nargs="?", help="a PDF or a markdown file")
+    ap.add_argument("pdf", type=Path, metavar="file", nargs="?", help="a PDF or a markdown file; without it, the documents that are open are listed")
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read or --wait: print JSON")
     ap.add_argument("--wait", action="store_true",
@@ -863,7 +885,10 @@ def main():
         print(GUIDE, end="")
         return
     if args.pdf is None:
-        ap.error("the file is missing")
+        if args.reply or args.done or args.wait or args.read or args.export:
+            ap.error("the file is missing")
+        show(args.port, not args.no_window)
+        return
     doc = args.pdf.resolve()
     if not doc.is_file():
         sys.exit(f"not found: {doc}")

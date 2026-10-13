@@ -9,6 +9,7 @@ just-doc book.pdf          # open for commenting
 just-doc book.pdf --read   # print the comments
 just-doc book.pdf --export # write book.commented.pdf with the comments inside
 just-doc notes.md          # a markdown file works the same way
+just-doc                   # list the open documents; open the window again if it was closed
 just-doc book.pdf --wait   # open it, wait for Ctrl+Enter, then print the comments
 just-doc book.pdf --reply 2 "text"   # add a reply to comment 2
 just-doc --guide           # how a coding assistant reviews a document with you
