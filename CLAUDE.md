@@ -26,6 +26,9 @@ of the window and to the table in `README.md`.
 - Python 3.9 or newer.
 - `pypdf` is the only dependency and is used only for export. Do not add
   dependencies without asking.
+- A markdown file is converted to a PDF with the external `pandoc` program
+  (`shown_pdf`); everything after that works on the PDF. `pandoc` is needed
+  only for markdown files.
 - The original PDF is never changed. The JSON file is the working copy; export
   writes a separate `book.commented.pdf`.
 - Positions are in PDF points measured from the top-left corner of the page.

@@ -8,6 +8,7 @@ so a script or a coding assistant can find the right place in the source.
 just-doc book.pdf          # open for commenting
 just-doc book.pdf --read   # print the comments
 just-doc book.pdf --export # write book.commented.pdf with the comments inside
+just-doc notes.md          # a markdown file works the same way
 ```
 
 ## Install
@@ -125,6 +126,29 @@ adds the `.tex` file and line for each comment:
 Positions refer to the PDF as it was when you commented. Recompiling moves the
 text, so comment on a copy of the PDF (and of its `.synctex.gz`) and read the
 comments before replacing it.
+
+## Markdown files
+
+`just-doc notes.md` converts the file to a PDF with [pandoc](https://pandoc.org)
+and opens that, so pandoc must be installed (with [typst](https://typst.app)
+or a LaTeX installation to make the PDF; typst is used when it is found). The
+PDF is kept in `~/.cache/just-doc` and made again when the markdown file has
+changed. Comments go to `notes.comments.json` next to the markdown file, and
+`--export` writes `notes.commented.pdf` there.
+
+`--read` adds the line in the markdown file for each comment. It finds the
+line by searching for the selected text, so it also works after the file was
+edited elsewhere; a text that occurs more than once gets its first line and a
+note:
+
+```
+[1] p. 1  notes.md:3 (first of 2 places)
+    text:    always converges
+    comment: too strong
+```
+
+The positions of the highlights on the page refer to the PDF as it was when
+you commented, as with LaTeX.
 
 ## Third-party code
 

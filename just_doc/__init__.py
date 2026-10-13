@@ -7,6 +7,7 @@ Comments are written to ``<name>.comments.json`` next to the PDF, so a script
 Usage
 -----
     just-doc book.pdf            open the PDF for commenting
+    just-doc notes.md            the same for a markdown file (needs pandoc)
     just-doc book.pdf --read     print the comments (with source lines if
                                  book.synctex.gz is next to the PDF)
     just-doc book.pdf --export   write book.commented.pdf with the comments
@@ -26,6 +27,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
+MARKDOWN = (".md", ".markdown")
 BROWSERS = ("chromium", "brave", "google-chrome-stable", "google-chrome", "chromium-browser")
 
 
@@ -39,6 +41,33 @@ def load_comments(doc):
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {"annots": []}
+
+
+def cache_dir():
+    path = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "just-doc"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def shown_pdf(doc):
+    """Return the PDF that is shown for ``doc``.
+
+    A PDF is shown as it is. A markdown file is converted with pandoc into a
+    PDF in the cache folder, again whenever the markdown file is newer.
+    """
+    if doc.suffix.lower() not in MARKDOWN:
+        return doc
+    if not shutil.which("pandoc"):
+        raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
+    out = cache_dir() / (hashlib.sha1(str(doc).encode()).hexdigest()[:16] + ".pdf")
+    if not out.exists() or out.stat().st_mtime < doc.stat().st_mtime:
+        cmd = ["pandoc", doc.name, "-o", str(out)]
+        if shutil.which("typst"):
+            cmd.append("--pdf-engine=typst")
+        res = subprocess.run(cmd, cwd=doc.parent, capture_output=True, text=True)
+        if res.returncode:
+            raise RuntimeError(f"pandoc could not convert {doc.name}:\n{res.stderr.strip()}")
+    return out
 
 
 def export_path(doc):
@@ -59,7 +88,7 @@ def export(doc):
     except ImportError as exc:
         raise RuntimeError("export needs the pypdf package (it comes with 'uv tool install')") from exc
 
-    writer = PdfWriter(clone_from=PdfReader(str(doc)))
+    writer = PdfWriter(clone_from=PdfReader(str(shown_pdf(doc))))
     author = TextStringObject(getpass.getuser())
     count = 0
     for a in load_comments(doc)["annots"]:
@@ -117,7 +146,12 @@ def make_handler(doc):
         def do_GET(self):
             route = self.path.split("?")[0]
             if route == "/doc":
-                self._send(200, doc.read_bytes(), "application/pdf")
+                try:
+                    body = shown_pdf(doc).read_bytes()
+                except RuntimeError as exc:
+                    self._json(500, {"error": str(exc)})
+                    return
+                self._send(200, body, "application/pdf")
             elif route == "/api/info":
                 self._json(200, {"name": doc.name, "path": str(doc)})
             elif route == "/api/annotations":
@@ -228,10 +262,37 @@ def source_line(doc, rect, centre=False):
     return f"{name}:{line}" if name and line else None
 
 
+def markdown_lines(doc, annots):
+    """Find the line of each comment's text in the markdown file ``doc``.
+
+    Only letters and digits are compared, so the markup, the line breaks and
+    the hyphenation of the PDF do not matter. A text that occurs more than
+    once gets the line of its first occurrence and a note.
+    """
+    chars, lines = [], []
+    for number, row in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+        for ch in row:
+            if ch.isalnum():
+                chars.append(ch.lower())
+                lines.append(number)
+    body = "".join(chars)
+    for a in annots:
+        key = "".join(ch.lower() for ch in a["text"] if ch.isalnum())[:80]
+        at = body.find(key) if len(key) > 2 else -1
+        if at < 0:
+            a["source"] = None
+            continue
+        count = body.count(key)
+        a["source"] = f"{doc.name}:{lines[at]}" + (f" (first of {count} places)" if count > 1 else "")
+
+
 def read(doc, as_json):
     annots = load_comments(doc)["annots"]
-    for a in annots:
-        a["source"] = source_line(doc, a["rects"][0], centre=a.get("kind") == "box")
+    if doc.suffix.lower() in MARKDOWN:
+        markdown_lines(doc, annots)
+    else:
+        for a in annots:
+            a["source"] = source_line(doc, a["rects"][0], centre=a.get("kind") == "box")
     if as_json:
         print(json.dumps(annots, ensure_ascii=False, indent=1))
         return
@@ -243,8 +304,8 @@ def read(doc, as_json):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF; comments are saved as JSON.")
-    ap.add_argument("pdf", type=Path)
+    ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF or a markdown file; comments are saved as JSON.")
+    ap.add_argument("pdf", type=Path, metavar="file", help="a PDF or a markdown file")
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read: print JSON")
     ap.add_argument("--export", action="store_true", help="write <name>.commented.pdf with the comments inside")
@@ -254,16 +315,17 @@ def main():
     doc = args.pdf.resolve()
     if not doc.is_file():
         sys.exit(f"not found: {doc}")
-    if args.export:
-        try:
+    try:
+        if args.export:
             out, count = export(doc)
-        except RuntimeError as exc:
-            sys.exit(str(exc))
-        print(f"{count} annotation(s) -> {out}")
-    elif args.read:
-        read(doc, args.json)
-    else:
-        serve(doc, args.port, not args.no_window)
+            print(f"{count} annotation(s) -> {out}")
+        elif args.read:
+            read(doc, args.json)
+        else:
+            shown_pdf(doc)
+            serve(doc, args.port, not args.no_window)
+    except RuntimeError as exc:
+        sys.exit(str(exc))
 
 
 if __name__ == "__main__":
