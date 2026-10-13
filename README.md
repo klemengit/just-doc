@@ -55,6 +55,10 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 
 In the comment box, `Enter` saves and `Shift+Enter` starts a new line.
 
+The browser's own shortcuts (print, find, history, bookmarks and so on) are
+switched off in the window. Copy (`Ctrl+C`), reload (`Ctrl+R`, `F5`), full
+screen (`F11`) and the developer tools (`F12`) still work.
+
 ### Cursor and visual selection
 
 A blue block marks the cursor. It moves as in vim, so no mouse is needed:

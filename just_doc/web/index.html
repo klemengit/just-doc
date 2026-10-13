@@ -1324,6 +1324,17 @@ document.addEventListener('keydown', e => {
     exportPdf();
     return;
   }
+  // The other browser shortcuts (print, find, history, bookmarks, ...) do nothing here.
+  // Copy, reload and the developer tools stay, and so do the editing keys in a text field.
+  const key = e.key.toLowerCase(), field = e.target.matches('textarea, input, select');
+  if ((e.ctrlKey || e.altKey) && !e.getModifierState('AltGraph')) {
+    const plain = e.ctrlKey && !e.altKey;
+    const keep = plain && key.length === 1 && (field ? 'acvxzy' : 'crduoi').includes(key);
+    const edit = field && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'backspace', 'delete', 'home', 'end'].includes(key);
+    const tools = plain && e.shiftKey && key === 'i';
+    if (!keep && !edit && !tools) e.preventDefault();
+  }
+  if (/^f\d+$/.test(key) && !['f5', 'f11', 'f12'].includes(key)) e.preventDefault();
   if (e.target.matches('textarea, input, select')) return;
   if (e.ctrlKey && !e.altKey && !e.metaKey && ['d', 'u'].includes(e.key.toLowerCase())) {
     e.preventDefault();
@@ -1331,7 +1342,7 @@ document.addEventListener('keydown', e => {
     syncCursor();
     return;
   }
-  if (e.ctrlKey && !e.altKey && !e.metaKey && ['o', 'i'].includes(e.key.toLowerCase())) {
+  if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && ['o', 'i'].includes(e.key.toLowerCase())) {
     e.preventDefault();
     if (state.mode !== 'normal' || $('help').classList.contains('open') || $('toc').classList.contains('open')) return;
     if (e.key.toLowerCase() === 'o') jump(state.back, state.fwd); else jump(state.fwd, state.back);
