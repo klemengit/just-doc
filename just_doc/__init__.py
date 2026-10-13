@@ -41,6 +41,8 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
 PORT = 8700
+# changes with the code, so a command can tell that the running just-doc is another version
+VERSION = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:8]
 MARKDOWN = (".md", ".markdown")
 MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
 WRITING = threading.Lock()   # held while the comments file is read, changed and written back
@@ -408,7 +410,7 @@ def make_handler(tabs):
             if route == "/api/events":
                 self._events()
             elif route == "/api/tabs":
-                self._json(200, {"app": "just-doc", "windows": tabs.windows, **tabs.listing()})
+                self._json(200, {"app": "just-doc", "version": VERSION, "windows": tabs.windows, **tabs.listing()})
             elif route in ("/", "/view"):
                 self.path = "/tabs.html" if route == "/" else "/index.html"
                 super().do_GET()
@@ -554,6 +556,7 @@ def running(doc, port):
     """Find the just-doc that has ``doc`` open.
 
     Returns its address, the id of the tab and the number of its windows, or None.
+    Says so when that just-doc runs another version of the code than this command.
     """
     first = port or PORT
     for candidate in range(first, first + 20):
@@ -564,6 +567,9 @@ def running(doc, port):
             continue
         for tab in state.get("tabs", []) if state.get("app") == "just-doc" else []:
             if tab["path"] == str(doc):
+                if state.get("version") != VERSION:
+                    print(f"note: the just-doc at {url} runs another version than this command and may behave "
+                          "differently; stop it (Ctrl+C in its terminal, or kill it) and run this command again")
                 return url, tab["id"], state["windows"]
     return None
 
