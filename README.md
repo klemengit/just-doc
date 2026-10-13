@@ -178,8 +178,8 @@ The round goes like this:
    list.
 4. To answer a reply, select the comment (`n` / `p`), press `A`, write, and
    press `Ctrl+Enter` again. The box shows the comment and the replies so far.
-5. When you agree, the assistant changes the source and marks the comment as
-   done.
+5. When you agree, the assistant changes the source. The window loads the new
+   version by itself and the comment is marked as done.
 
 ### The commands
 
@@ -214,6 +214,10 @@ again. `--done` can be combined with `--reply` and given several times.
 
 `--read` prints all comments with their replies, and marks each one that is
 `(done)` or `(answered)`.
+
+When the file of an open document changes on disk (the markdown file was
+edited, the PDF was compiled again), the window loads it again by itself and
+stays on the page.
 
 ## Sharing the comments
 

@@ -85,7 +85,8 @@ Everything goes through these commands; do not edit the .comments.json file.
    you disagree with: reply and wait for the answer.
 
 4. When a comment asks for a change, change the source file (for LaTeX,
-   compile it again). Then say what you did and mark the comment as done:
+   compile it again). The window loads the new version by itself. Then say
+   what you did and mark the comment as done:
 
        just-doc FILE --reply 3 "what was changed" --done 3 --from NAME
 
@@ -279,6 +280,7 @@ class Tabs:
         self.handed = {}     # id -> how often Ctrl+Enter was pressed in the document
         self.taken = {}      # id -> how many of those a --wait has seen
         self.waiting = {}    # id -> the --wait commands that are waiting now
+        self.stamp = {}      # id -> the time of the last change of the file that the window knows of
         self.changed = threading.Condition()
 
     def open(self, doc):
@@ -327,8 +329,17 @@ class Tabs:
                 self.waiting[key] -= 1
 
     def listing(self):
-        tabs = [{"id": key, "name": doc.name, "path": str(doc), "rev": self.rev.get(key, 0)}
-                for key, doc in self.docs.items()]
+        tabs = []
+        for key, doc in self.docs.items():
+            try:
+                changed = doc.stat().st_mtime
+            except OSError:
+                changed = 0
+            # a file that is being written is left alone until it is a second old
+            if key not in self.stamp or time.time() - changed > 1:
+                self.stamp[key] = changed
+            tabs.append({"id": key, "name": doc.name, "path": str(doc), "rev": self.rev.get(key, 0),
+                         "file": self.stamp[key]})
         return {"tabs": tabs, "focus": self.focus, "opened": self.opened}
 
 
@@ -360,22 +371,25 @@ def make_handler(tabs):
             return url.path, key, docs.get(key) if key else next(iter(docs.values()), None)
 
         def _events(self):
-            """Send the list of tabs to a window, now and after every change."""
+            """Send the list of tabs to a window, now and after every change.
+
+            The list is looked at every two seconds too, to see a file that was changed.
+            """
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
             with tabs.changed:
                 tabs.windows += 1
-            sent = None
+            sent = seen = None
             try:
                 while True:
                     with tabs.changed:
-                        if sent == tabs.version:
+                        if seen == tabs.version:
                             tabs.changed.wait(2)
-                        version, listing = tabs.version, tabs.listing()
-                    if version != sent:
+                        seen, listing = tabs.version, tabs.listing()
+                    if listing != sent:
                         self.wfile.write(f"data: {json.dumps(listing, ensure_ascii=False)}\n\n".encode("utf-8"))
-                        sent = version
+                        sent = listing
                     else:
                         # a line that the window ignores; writing it fails once the window is closed
                         self.wfile.write(b": still here\n\n")

@@ -27,6 +27,7 @@ const bar = document.getElementById('tabs');
 const frames = {};   // document id -> iframe
 let tabs = [], active = null;
 const revs = {};     // document id -> the state of its comments that its viewer shows
+const files = {};    // document id -> the state of its file that its viewer shows
 let opened = +(sessionStorage.getItem('opened') || -1);   // the last "open" request that was shown
 
 function show(id) {
@@ -71,6 +72,9 @@ function sync(msg) {
   for (const t of tabs) {
     if (t.id in revs && revs[t.id] !== t.rev) frames[t.id].contentWindow.reloadAnnots?.();
     revs[t.id] = t.rev;
+    // the file itself was changed: load the document again
+    if (t.id in files && files[t.id] !== t.file) frames[t.id].contentWindow.location.reload();
+    files[t.id] = t.file;
   }
   for (const id in frames) if (!tabs.some(t => t.id === id)) { frames[id].remove(); delete frames[id]; }
   if (!tabs.length) { draw(); return; }
