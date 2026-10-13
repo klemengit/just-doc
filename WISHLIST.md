@@ -37,3 +37,18 @@ A choice to convert a markdown file with a LaTeX engine and not with typst.
 With typst, pandoc drops LaTeX outside `$…$`: environments such as
 `\begin{align}`, `\newcommand` macros and packages. LaTeX keeps them and is
 slower.
+
+## Live HTML reports with feedback
+
+A separate tool, not a part of just-doc. An assistant publishes an HTML
+report to a server that keeps running, and the user answers in the page.
+
+- The page stays live: interactive plots, equations and images work as the
+  assistant wrote them. Printing the page to a PDF for just-doc is not
+  enough for that reason.
+- Feedback is more than comments on text: the report can ask, and the user
+  picks one of several options, ticks boxes or types a value.
+- The same round as in just-doc: the assistant publishes and waits, the user
+  answers and hands over with a key, the assistant reads the answers.
+- Comments on a selection work as in just-doc where that fits, with the same
+  commands (`--wait`, `--reply`) if possible, so an assistant learns one way.
