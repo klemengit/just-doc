@@ -66,6 +66,13 @@ function draw() {
 
 // the server sends the list of documents when it changes
 function sync(msg) {
+  if (msg.quit) {
+    // q was pressed in a window: just-doc stops. A window that the browser does not let
+    // close itself says so.
+    window.close();
+    document.body.textContent = 'just-doc was stopped; this window can be closed.';
+    return;
+  }
   const at = tabs.findIndex(t => t.id === active);
   tabs = msg.tabs;
   for (const t of tabs) {

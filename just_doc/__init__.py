@@ -356,6 +356,7 @@ class Tabs:
         self.waiting = {}    # id -> the --wait commands that are waiting now
         self.stamp = {}      # id -> the time of the last change of the file that the window knows of
         self.logs = {}       # id -> the file of its repository that changes with every commit, and its time
+        self.quit = False    # set by the q key: the windows close and just-doc stops
         self.changed = threading.Condition()
 
     def open(self, doc):
@@ -418,7 +419,7 @@ class Tabs:
             self.committed(key, doc)
             tabs.append({"id": key, "name": doc.name, "path": str(doc), "rev": self.rev.get(key, 0),
                          "file": self.stamp[key]})
-        return {"tabs": tabs, "focus": self.focus, "opened": self.opened}
+        return {"tabs": tabs, "focus": self.focus, "opened": self.opened, "quit": self.quit}
 
     def committed(self, key, doc):
         """Keep the PDF of a document as it is when a commit is made in its repository."""
@@ -551,6 +552,19 @@ def make_handler(tabs):
                 windows = tabs.windows
                 tabs.open(new)
                 self._json(200, {"ok": True, "windows": windows})
+                return
+            if route == "/api/quit":
+                # as for /api/open: JSON only, so that another web page cannot stop just-doc
+                if self.headers.get("Content-Type") != "application/json":
+                    self._json(400, {"error": "JSON expected"})
+                    return
+                with tabs.changed:
+                    tabs.quit = True
+                    tabs.version += 1
+                    tabs.changed.notify_all()
+                self._json(200, {"ok": True})
+                # a moment later, so that every window still hears of it and closes
+                threading.Timer(0.7, self.server.shutdown).start()
                 return
             if route == "/api/close":
                 tabs.close(key)

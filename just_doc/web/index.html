@@ -141,7 +141,7 @@
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>m</kbd>/<kbd>M</kbd> changes &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>m</kbd>/<kbd>M</kbd> changes &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>q</kbd> quit &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>) <small id="archive"></small></h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
@@ -152,6 +152,7 @@
     <tr><td><kbd>A</kbd></td><td>add a reply to the selected comment</td></tr>
     <tr><td><kbd>gn</kbd></td><td>go to the next comment with a new reply</td></tr>
     <tr><td><kbd>D</kbd></td><td>show or hide the comments that are done</td></tr>
+    <tr><td><kbd>q</kbd> <kbd>y</kbd></td><td>stop just-doc and close its windows</td></tr>
     <tr><td><kbd>m</kbd> / <kbd>M</kbd></td><td>mark what changed since the last hand-over / the last commit; again: hide</td></tr>
     <tr><td><kbd>gm</kbd></td><td>go to the next change; the bar shows the text as it was</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>Enter</kbd></td><td>hand the comments over to the <code>just-doc --wait</code> that is waiting for them</td></tr>
@@ -2000,6 +2001,25 @@ function handleKey(e) {
     state.count = '';
     hint(k + ' …');
     state.keyTimer = setTimeout(() => { if (state.pending === k) { state.pending = ''; hint(''); } }, 1500);
+    return;
+  }
+
+  // q asks first: it stops just-doc and closes its windows, also for a --wait that is waiting
+  if (state.pending === 'q') {
+    e.preventDefault();
+    clearTimeout(state.keyTimer);
+    state.pending = '';
+    hint('');
+    if (k === 'y') fetch('/api/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    return;
+  }
+  if (k === 'q' && state.mode === 'normal') {
+    e.preventDefault();
+    state.pending = 'q';
+    state.count = '';
+    $('hint').textContent = 'stop just-doc and close the window? y';
+    clearTimeout(hint.t);
+    state.keyTimer = setTimeout(() => { if (state.pending === 'q') { state.pending = ''; hint(''); } }, 4000);
     return;
   }
 
