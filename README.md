@@ -37,6 +37,8 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `A` | add a reply to the selected comment (see "Reviewing with a coding assistant") |
 | `gn` | go to the next comment with a new reply |
 | `D` | show or hide the comments that are done |
+| `m` / `M` | mark what changed since the last hand-over / since the last commit; the same key again hides the marks (see "What changed") |
+| `gm` | go to the next change; the bar at the top shows the text as it was |
 | `Ctrl` `Enter` | hand the comments over to the `just-doc --wait` that is waiting for them |
 | `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
@@ -251,6 +253,30 @@ this. A changed text next to another changed text is found as one piece, so
 two comments can then point to the same new sentence. A rectangle (`r`) stays
 where it was drawn. The search runs in the window, so a document that changed
 while it was not open is handled when it is opened next.
+
+### What changed
+
+After a round you see the new document, but only the places you commented on.
+`m` marks everything that is not as it was at your last `Ctrl+Enter`, and `M`
+everything that is not as it was at the last commit. Changed and new text is
+underlined in blue; a red line stands where text was removed. `gm` goes from
+one change to the next, and the bar at the top shows the text as it was. The
+marks stay on when the window loads a new version of the file.
+
+The words of the two versions are compared in reading order, so text that
+only moved to another line or page is not a change. Page numbers and running
+heads are left out. Figures and the layout are not compared.
+
+For "the last commit":
+
+- A file that is in git (a markdown file, a PDF that is committed) is taken
+  from the last commit.
+- A PDF that is built from a source and is not in git has no version there.
+  just-doc keeps a copy of it whenever a commit is made in its repository
+  while the document is open, so compile the PDF before you commit. A PDF
+  that is older than the last commit counts as that version too.
+
+The copies are kept in the cache folder (`~/.cache/just-doc`).
 
 ## Sharing the comments
 

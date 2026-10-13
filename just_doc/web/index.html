@@ -73,6 +73,10 @@
   .it .c.none { color: #aaa; font-weight: normal; }
   .it.done { opacity: .55; }
   .pg .hl div.fixed { background: #8fdf8f; }
+  .pg .hl div.chg { background: linear-gradient(rgba(47, 123, 255, .16) 88%, #2f7bff 88%); border-radius: 0; }
+  .pg .hl div.chg.cut { background: #d00000; }
+  #changes { display: none; border-radius: 10px; padding: 1px 10px; background: #2f7bff; color: #fff; max-width: 45vw;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   .it .q s { text-decoration-color: #d00000; }
   .it .q u { text-decoration: none; background: #c9f2c9; color: #222; }
   #side h1 small { font-weight: normal; color: #666; }
@@ -132,11 +136,12 @@
   <button id="tocbtn">contents</button>
   <button id="zout">−</button><span id="zval"></span><button id="zin">+</button>
   <span id="news"></span>
+  <span id="changes"></span>
   <span id="hint"></span>
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>m</kbd>/<kbd>M</kbd> changes &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>) <small id="archive"></small></h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
 <div id="toast"></div>
@@ -147,6 +152,8 @@
     <tr><td><kbd>A</kbd></td><td>add a reply to the selected comment</td></tr>
     <tr><td><kbd>gn</kbd></td><td>go to the next comment with a new reply</td></tr>
     <tr><td><kbd>D</kbd></td><td>show or hide the comments that are done</td></tr>
+    <tr><td><kbd>m</kbd> / <kbd>M</kbd></td><td>mark what changed since the last hand-over / the last commit; again: hide</td></tr>
+    <tr><td><kbd>gm</kbd></td><td>go to the next change; the bar shows the text as it was</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>Enter</kbd></td><td>hand the comments over to the <code>just-doc --wait</code> that is waiting for them</td></tr>
     <tr><td><kbd>s</kbd></td><td>strike through the selected text: it should be deleted</td></tr>
     <tr><td><kbd>r</kbd></td><td>draw a rectangle and comment (for a figure, equation or code)</td></tr>
@@ -198,7 +205,7 @@ const $ = id => document.getElementById(id);
 const DOC = new URLSearchParams(location.search).get('d') || '';
 const api = path => path + (DOC ? '?d=' + DOC : '');
 // page, zoom and page view are remembered for each document, the rest for all
-const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting', 'placed', 'filed'];
+const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting', 'placed', 'filed', 'changes'];
 const store = {
   key: k => (OWN.includes(k) ? DOC + ':' : '') + k,
   get(k, d) { try { const v = localStorage.getItem(store.key(k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -457,6 +464,15 @@ function drawHighlights() {
       pgs[r.p].querySelector('.hl').appendChild(d);
     }
   }
+  const c = state.changes;
+  for (const m of c ? c.marks : []) {
+    for (const r of m.rects) {
+      const d = document.createElement('div');
+      d.className = 'chg' + (m.cut ? ' cut' : '') + (m === c.marks[c.at] ? ' on' : '');
+      d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
+      pgs[r.p].querySelector('.hl').appendChild(d);
+    }
+  }
 }
 
 // A comment that is done leaves the list at the next Ctrl+Enter, if it was looked at by
@@ -507,7 +523,7 @@ function redraw() { sortAnnots(); drawHighlights(); drawList(); }
 // Texts are compared by their letters and digits only ("key"), so line breaks, hyphens and
 // spaces do not matter. A comment keeps the key of the text before and after it.
 const ALNUM = /[\p{L}\p{N}]/u;
-const pageIdx = {};   // page number -> { key, items, at, off }: for each key character its item and place in it
+const pageIdx = {};   // page number -> { key, items, at, off, words }: for each key character its item and place in it
 const ruler = document.createElement('canvas').getContext('2d');
 
 function keyOf(s) {
@@ -516,25 +532,34 @@ function keyOf(s) {
   return key;
 }
 
-async function pageIndex(p) {
-  if (pageIdx[p]) return pageIdx[p];
-  const page = await pdf.getPage(p), vp = page.getViewport({ scale: 1 }), tc = await page.getTextContent();
-  const items = [], at = [], off = [];
-  let key = '';
+const pageIndex = async p => pageIdx[p] || (pageIdx[p] = await indexOf(pdf, p));
+
+// words: where in the key each word starts. A word ends at a space and at the end of a
+// line, but not at a hyphen there, so a word that is broken over two lines stays one.
+async function indexOf(doc, p) {
+  const page = await doc.getPage(p), vp = page.getViewport({ scale: 1 }), tc = await page.getTextContent();
+  const items = [], at = [], off = [], words = [];
+  const broken = str => /[-\u00ad]\s*$/.test(str);
+  let key = '', gap = true;
   for (const it of tc.items) {
-    if (!it.str) { if (it.hasEOL && items.length) items[items.length - 1].eol = true; continue; }
+    if (!it.str) {
+      if (it.hasEOL && items.length) { items[items.length - 1].eol = true; gap = gap || !broken(items[items.length - 1].str); }
+      continue;
+    }
     const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
     const h = it.height || Math.hypot(it.transform[2], it.transform[3]);
     items.push({ str: it.str, x, y: y - h * 0.86, w: it.width, h: h * 1.16, eol: it.hasEOL,
                  font: tc.styles[it.fontName]?.fontFamily || 'sans-serif' });
     for (let c = 0; c < it.str.length; c++) {
-      if (!ALNUM.test(it.str[c])) continue;
+      if (!ALNUM.test(it.str[c])) { gap = gap || /\s/.test(it.str[c]); continue; }
+      if (gap) { words.push(key.length); gap = false; }
       key += keyOf(it.str[c]);
       at.push(items.length - 1);
       off.push(c);
     }
+    if (it.hasEOL && !broken(it.str)) gap = true;
   }
-  return pageIdx[p] = { key, items, at, off };
+  return { key, items, at, off, words };
 }
 
 // horizontal place of character c of an item, measured with a font of the same kind
@@ -669,6 +694,165 @@ async function place(a) {
   if (a.before !== before || a.after !== after) { a.before = before; a.after = after; changed = true; }
   if (a.lost) { delete a.lost; changed = true; }
   return changed;
+}
+
+// ---- what changed: the document against an earlier version of it ----
+// The words of a document in reading order, as { ix, p, s, e } (page index, page, place in
+// its key). The first and the last line of a page are left out when they are a page number
+// or stand on three pages or more: running heads would count as changes where a page breaks
+// at another line.
+async function wordsOf(doc, index) {
+  const pages = [], count = new Map();
+  for (let p = 1; p <= doc.numPages; p++) {
+    const ix = await index(p), ws = ix.words.map((s, i) => ({ ix, p, s, e: ix.words[i + 1] ?? ix.key.length }));
+    let top = Infinity, bottom = -Infinity;
+    for (const it of ix.items) if (it.str.trim()) { top = Math.min(top, it.y); bottom = Math.max(bottom, it.y); }
+    const edge = {};
+    for (const w of ws) { const y = ix.items[ix.at[w.s]].y; w.edge = y < top + 3 ? 't' : y > bottom - 3 ? 'b' : ''; }
+    for (const side of 'tb') {
+      edge[side] = side + ws.filter(w => w.edge === side).map(w => ix.key.slice(w.s, w.e)).join('').replace(/\p{N}/gu, '');
+      count.set(edge[side], (count.get(edge[side]) || 0) + 1);
+    }
+    pages.push({ ws, edge });
+  }
+  return pages.flatMap(({ ws, edge }) => ws.filter(w => !w.edge || (edge[w.edge].length > 1 && count.get(edge[w.edge]) < 3)));
+}
+
+// The stretches of two word lists that are not the same, as [a0, a1, b0, b1]. Words that
+// stand once in both are matched first, in the longest order that both have; then the same
+// is done between them, and a short stretch is compared word by word.
+function diffWords(a, b) {
+  const out = [];
+  const small = (a0, a1, b0, b1) => {
+    const n = a1 - a0, m = b1 - b0, w = m + 1, t = new Uint16Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      t[i * w + j] = a[a0 + i] === b[b0 + j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+    let i = 0, j = 0, i0 = 0, j0 = 0;
+    while (i < n && j < m) {
+      if (a[a0 + i] === b[b0 + j]) { if (i > i0 || j > j0) out.push([a0 + i0, a0 + i, b0 + j0, b0 + j]); i0 = ++i; j0 = ++j; }
+      else if (t[(i + 1) * w + j] >= t[i * w + j + 1]) i++; else j++;
+    }
+    if (i0 < n || j0 < m) out.push([a0 + i0, a1, b0 + j0, b1]);
+  };
+  const walk = (a0, a1, b0, b1) => {
+    while (a0 < a1 && b0 < b1 && a[a0] === b[b0]) { a0++; b0++; }
+    while (a0 < a1 && b0 < b1 && a[a1 - 1] === b[b1 - 1]) { a1--; b1--; }
+    if (a0 === a1 && b0 === b1) return;
+    if (a0 === a1 || b0 === b1) { out.push([a0, a1, b0, b1]); return; }
+    const inA = new Map(), inB = new Map();
+    for (let i = a0; i < a1; i++) inA.set(a[i], inA.has(a[i]) ? -1 : i);
+    for (let j = b0; j < b1; j++) inB.set(b[j], inB.has(b[j]) ? -1 : j);
+    // the longest run of such pairs that rises in both lists
+    const tails = [], pairs = [];
+    for (let i = a0; i < a1; i++) {
+      const j = inA.get(a[i]) === i ? inB.get(a[i]) ?? -1 : -1;
+      if (j < 0) continue;
+      let lo = 0, hi = tails.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (pairs[tails[mid]].j < j) lo = mid + 1; else hi = mid; }
+      pairs.push({ i, j, prev: lo ? tails[lo - 1] : -1 });
+      tails[lo] = pairs.length - 1;
+    }
+    if (!tails.length) {
+      if ((a1 - a0) * (b1 - b0) <= 4e6) small(a0, a1, b0, b1); else out.push([a0, a1, b0, b1]);
+      return;
+    }
+    const run = [];
+    for (let k = tails[tails.length - 1]; k >= 0; k = pairs[k].prev) run.push(pairs[k]);
+    let i = a0, j = b0;
+    for (const m of run.reverse()) { walk(i, m.i, j, m.j); i = m.i + 1; j = m.j + 1; }
+    walk(i, a1, j, b1);
+  };
+  walk(0, a.length, 0, b.length);
+  return out;
+}
+
+const SINCE = { handed: 'the last hand-over', commit: 'the last commit' };
+
+// m and M: mark what is not as it was at the last Ctrl+Enter / at the last commit
+async function showChanges(kind) {
+  if (state.comparing) return;
+  if (state.changes && state.changes.kind === kind) kind = '';
+  state.changes = null;
+  store.set('changes', kind);
+  if (kind) {
+    state.comparing = true;
+    $('changes').style.display = 'inline-block';
+    $('changes').textContent = 'comparing …';
+    drawHighlights();
+    try {
+      const r = await fetch(api('/api/before') + (DOC ? '&' : '?') + 'k=' + kind);
+      if (!r.ok) throw new Error((await r.json()).error);
+      const old = await pdfjsLib.getDocument({ data: await r.arrayBuffer() }).promise;
+      const a = await wordsOf(old, p => indexOf(old, p)), b = await wordsOf(pdf, pageIndex);
+      const ids = new Map(), id = w => { const k = w.ix.key.slice(w.s, w.e); if (!ids.has(k)) ids.set(k, ids.size); return ids.get(k); };
+      const text = (ws, i0, i1) => {
+        let out = '';
+        for (let i = i0; i < i1; ) {
+          let k = i;
+          while (k + 1 < i1 && ws[k + 1].p === ws[i].p) k++;
+          out += placeText(ws[i].ix, ws[i].s, ws[k].e) + ' ';
+          i = k + 1;
+        }
+        return out.trim();
+      };
+      const marks = [];
+      for (const [a0, a1, b0, b1] of diffWords(a.map(id), b.map(id))) {
+        const last = marks[marks.length - 1];
+        // a word or two that stayed between two changes: one change
+        if (last && a0 - last.a1 === b0 - last.b1 && b0 - last.b1 <= 2) { last.a1 = a1; last.b1 = b1; }
+        else marks.push({ a0, a1, b0, b1 });
+      }
+      for (const m of marks) {
+        m.was = text(a, m.a0, m.a1);
+        m.rects = [];
+        for (let i = m.b0; i < m.b1; ) {
+          let k = i;
+          while (k + 1 < m.b1 && b[k + 1].p === b[i].p) k++;
+          m.rects.push(...placeRects(b[i].p, b[i].ix, b[i].s, b[k].e));
+          i = k + 1;
+        }
+        if (!m.rects.length && b.length) {
+          // text that was removed: a thin mark where it stood
+          const end = m.b0 >= b.length, w = b[end ? b.length - 1 : m.b0], c = end ? w.e - 1 : w.s, it = w.ix.items[w.ix.at[c]];
+          m.rects.push({ p: w.p, x: Math.round(itemX(it, w.ix.off[c] + (end ? 1 : 0))) - 2, y: it.y, w: 3, h: it.h });
+          m.cut = true;
+        }
+      }
+      state.changes = { kind, marks: marks.filter(m => m.rects.length), at: -1 };
+      old.destroy();
+    } catch (err) {
+      store.set('changes', '');
+      hint(err.message);
+    }
+    state.comparing = false;
+  }
+  showChangeInfo();
+  drawHighlights();
+}
+
+function showChangeInfo() {
+  const c = state.changes, el = $('changes');
+  el.style.display = c ? 'inline-block' : 'none';
+  el.textContent = '';
+  if (!c) return;
+  const n = c.marks.length, m = c.marks[c.at];
+  el.textContent = !n ? `no changes since ${SINCE[c.kind]}`
+    : !m ? `${n} change${n > 1 ? 's' : ''} since ${SINCE[c.kind]} · gm`
+    : `${c.at + 1}/${n} · ` + (m.cut ? 'removed: «' + m.was + '»' : m.was ? 'before: «' + m.was + '»' : 'new text');
+  el.title = el.textContent;
+}
+
+// gm: go to the next change
+function stepChange() {
+  const c = state.changes;
+  if (!c) { hint('m or M marks the changes first'); return; }
+  if (!c.marks.length) return;
+  c.at = (c.at + 1) % c.marks.length;
+  const r = c.marks[c.at].rects[0];
+  pushJump();
+  goto(r.p, r.y);
+  showChangeInfo();
+  drawHighlights();
 }
 
 // after a change of the file: look for every comment again
@@ -1852,6 +2036,13 @@ function handleKey(e) {
     return;
   }
   const gg = state.pending === 'g' && k === 'g';
+  if (state.pending === 'g' && k === 'm' && state.mode === 'normal') {
+    e.preventDefault();
+    state.pending = state.count = '';
+    hint('');
+    stepChange();
+    return;
+  }
   if (state.pending === 'g' && k === 'n' && state.mode === 'normal') {
     e.preventDefault();
     state.pending = state.count = '';
@@ -1896,6 +2087,7 @@ function handleKey(e) {
       if (state.sel) openEditor(state.sel, false, true); else hint('go to a comment first (n)');
       return;
     case 'P': e.preventDefault(); setSingle(!state.single); return;
+    case 'm': case 'M': e.preventDefault(); showChanges(k === 'm' ? 'handed' : 'commit'); return;
     // previous / next tab, as the buffer keys of many nvim setups
     case 'H': case 'L':
       e.preventDefault();
@@ -2063,6 +2255,8 @@ goto(store.get('page', 1));
 if (store.get('single', false)) { state.scaleBefore = store.get('scaleBefore', 0); setSingle(true, false); }
 await placeAll(info.file).catch(() => {});
 window.__ready = true;
+// the changes stay marked when the window loads a new version of the file
+if (store.get('changes', '')) showChanges(store.get('changes', ''));
 </script>
 </body>
 </html>

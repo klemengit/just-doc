@@ -203,16 +203,85 @@ def shown_pdf(doc):
         return doc
     if not shutil.which("pandoc"):
         raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
-    out = cache_dir() / (hashlib.sha1(str(doc).encode()).hexdigest()[:16] + ".pdf")
+    out = kept(doc, "shown")
     if not out.exists() or out.stat().st_mtime < doc.stat().st_mtime:
-        cmd = ["pandoc", "--from=markdown", "-o", str(out)]
-        if shutil.which("typst"):
-            cmd.append("--pdf-engine=typst")
-        text = draw_diagrams(doc.read_text(encoding="utf-8"))
-        res = subprocess.run(cmd, cwd=doc.parent, input=text, capture_output=True, text=True, encoding="utf-8")
-        if res.returncode:
-            raise RuntimeError(f"pandoc could not convert {doc.name}:\n{res.stderr.strip()}")
+        convert(doc, doc.read_text(encoding="utf-8"), out)
     return out
+
+
+def convert(doc, text, out):
+    """Write the markdown ``text`` of ``doc`` as a PDF to ``out``."""
+    cmd = ["pandoc", "--from=markdown", "-o", str(out)]
+    if shutil.which("typst"):
+        cmd.append("--pdf-engine=typst")
+    res = subprocess.run(cmd, cwd=doc.parent, input=draw_diagrams(text), capture_output=True, text=True,
+                         encoding="utf-8")
+    if res.returncode:
+        raise RuntimeError(f"pandoc could not convert {doc.name}:\n{res.stderr.strip()}")
+
+
+def kept(doc, what):
+    """Return the path in the cache folder of a PDF that is kept for ``doc``.
+
+    ``what`` is "shown" (a markdown file as a PDF), "handed" (the PDF at the
+    last Ctrl+Enter) or "commit" (the PDF at the last commit).
+    """
+    name = hashlib.sha1(str(doc).encode()).hexdigest()[:16]
+    return cache_dir() / (name + (".pdf" if what == "shown" else f".{what}.pdf"))
+
+
+def git(doc, *args):
+    """Run git in the folder of ``doc``; return its output, or None when it fails."""
+    try:
+        res = subprocess.run(["git", "-C", str(doc.parent), *args], capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None if res.returncode else res.stdout
+
+
+def head_log(doc):
+    """Return the file of the repository of ``doc`` that changes with every commit, or None."""
+    out = git(doc, "rev-parse", "--absolute-git-dir")
+    return Path(out.decode().strip()) / "logs" / "HEAD" if out else None
+
+
+def commit_pdf(doc, log, now=False):
+    """Return the PDF of ``doc`` as it was at the last commit, or None when it is not known.
+
+    A file that is in git is taken from there. A PDF that is not, because it
+    is built from a source, is copied when a commit is made while it is open
+    (``now``) and when it is older than the last commit; ``log`` is the file
+    from ``head_log``.
+    """
+    out, note = kept(doc, "commit"), kept(doc, "commit").with_suffix(".id")
+    was = note.read_text() if note.exists() and out.exists() else ""
+    blob = git(doc, "rev-parse", "-q", "--verify", "HEAD:./" + doc.name)
+    try:
+        if blob:
+            mark = blob.decode().strip()
+            if was != mark:
+                data = git(doc, "show", "HEAD:./" + doc.name)
+                if data is None:
+                    return None
+                if doc.suffix.lower() in MARKDOWN:
+                    convert(doc, data.decode("utf-8"), out)
+                else:
+                    out.write_bytes(data)
+                note.write_text(mark)
+            return out
+        if log is None or not log.exists() or doc.suffix.lower() in MARKDOWN:
+            return None
+        mark = f"commit at {log.stat().st_mtime}"
+        if was != mark:
+            if not now and doc.stat().st_mtime > log.stat().st_mtime:
+                # changed after the commit, and its state at the commit was not seen
+                out.unlink(missing_ok=True)
+                return None
+            shutil.copyfile(doc, out)
+            note.write_text(mark)
+        return out
+    except (OSError, RuntimeError, UnicodeDecodeError):
+        return None
 
 
 def export_path(doc):
@@ -286,6 +355,7 @@ class Tabs:
         self.taken = {}      # id -> how many of those a --wait has seen
         self.waiting = {}    # id -> the --wait commands that are waiting now
         self.stamp = {}      # id -> the time of the last change of the file that the window knows of
+        self.logs = {}       # id -> the file of its repository that changes with every commit, and its time
         self.changed = threading.Condition()
 
     def open(self, doc):
@@ -343,9 +413,23 @@ class Tabs:
             # a file that is being written is left alone until it is a second old
             if key not in self.stamp or time.time() - changed > 1:
                 self.stamp[key] = changed
+            self.committed(key, doc)
             tabs.append({"id": key, "name": doc.name, "path": str(doc), "rev": self.rev.get(key, 0),
                          "file": self.stamp[key]})
         return {"tabs": tabs, "focus": self.focus, "opened": self.opened}
+
+    def committed(self, key, doc):
+        """Keep the PDF of a document as it is when a commit is made in its repository."""
+        if key not in self.logs:
+            self.logs[key] = [head_log(doc), None]
+        log, seen = self.logs[key]
+        try:
+            at = log.stat().st_mtime if log else None
+        except OSError:
+            at = None
+        if at != seen:
+            self.logs[key][1] = at
+            commit_pdf(doc, log, now=seen is not None)
 
 
 def make_handler(tabs):
@@ -414,7 +498,7 @@ def make_handler(tabs):
             elif route in ("/", "/view"):
                 self.path = "/tabs.html" if route == "/" else "/index.html"
                 super().do_GET()
-            elif route in ("/doc", "/api/info", "/api/annotations", "/api/wait") and doc is None:
+            elif route in ("/doc", "/api/info", "/api/annotations", "/api/wait", "/api/before") and doc is None:
                 self._json(404, {"error": "this document is not open"})
             elif route == "/doc":
                 try:
@@ -423,6 +507,15 @@ def make_handler(tabs):
                     self._json(500, {"error": str(exc)})
                     return
                 self._send(200, body, "application/pdf")
+            elif route == "/api/before":
+                # the document as it was at the last Ctrl+Enter or at the last commit
+                commit = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("k") == ["commit"]
+                old = commit_pdf(doc, tabs.logs.get(key, [None])[0]) if commit else kept(doc, "handed")
+                if old is None or not old.exists():
+                    self._json(404, {"error": "the version of the last commit is not known" if commit
+                                     else "nothing was handed over yet (Ctrl+Enter)"})
+                else:
+                    self._send(200, old.read_bytes(), "application/pdf")
             elif route == "/api/info":
                 self._json(200, {"name": doc.name, "path": str(doc), "file": doc.stat().st_mtime})
             elif route == "/api/annotations":
@@ -465,6 +558,10 @@ def make_handler(tabs):
                 self._json(404, {"error": "not found"})
                 return
             if route == "/api/done":
+                try:
+                    shutil.copyfile(shown_pdf(doc), kept(doc, "handed"))
+                except (OSError, RuntimeError):
+                    pass
                 self._json(200, {"ok": True, "listening": tabs.hand(key)})
                 return
             if route == "/api/reply":
