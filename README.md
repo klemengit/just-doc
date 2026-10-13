@@ -50,6 +50,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `/` | search the whole PDF: type the text, `Enter`; then `n` / `N` go to the next / previous match and `Esc` ends the search |
 | `t` | table of contents: `j` / `k` move, `Enter` goes there, `Esc` closes |
 | `h` `j` `k` `l`, `w` `b` `e`, `0` `$` | move the cursor (see below); the page follows it |
+| `↓` / `↑` | move the cursor a line down / up, as `j` / `k` do; also in a selection |
 | `f` / `F` + a character | move the cursor to that character after / before it on the line (`fa`, `3fa`); the wait for the character ends after 1.5 s |
 | `gg` / `G` | go to the top / bottom of the document; with a number first (`12G`) go to that page |
 | `Ctrl` `d` / `Ctrl` `u` | half a page down / up |

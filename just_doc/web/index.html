@@ -163,7 +163,7 @@
     <tr><td><kbd>t</kbd></td><td>table of contents: <kbd>j</kbd> <kbd>k</kbd> move, <kbd>Enter</kbd> go</td></tr>
     <tr><td><kbd>h</kbd> <kbd>l</kbd></td><td>move the cursor (blue) by character</td></tr>
     <tr><td><kbd>w</kbd> <kbd>b</kbd> <kbd>e</kbd></td><td>next word / word start / word end</td></tr>
-    <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>move the cursor by line; the page follows</td></tr>
+    <tr><td><kbd>j</kbd> <kbd>k</kbd>, <kbd>↓</kbd> <kbd>↑</kbd></td><td>move the cursor by line; the page follows</td></tr>
     <tr><td><kbd>0</kbd> <kbd>$</kbd></td><td>start / end of the line</td></tr>
     <tr><td><kbd>f</kbd> / <kbd>F</kbd> + character</td><td>go to that character after / before the cursor on the line</td></tr>
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
@@ -1148,6 +1148,8 @@ const motions = {
   j(c) { return stepLine(c, 1); },
   k(c) { return stepLine(c, -1); },
 };
+// the arrow keys move by line as j and k do; held, they repeat on a keyboard where j and k do not
+const ARROWS = { ArrowDown: 'j', ArrowUp: 'k' };
 
 // true when the word of the position is on the screen
 function seen(pos) {
@@ -1476,7 +1478,7 @@ function textObject(key, around) {
 }
 
 function visualKey(e, n) {
-  const k = e.key;
+  const k = ARROWS[e.key] || e.key;
   if (Object.hasOwn(motions, k)) { e.preventDefault(); moveCursor(k, n); return; }
   switch (k) {
     case 'Escape': e.preventDefault(); exitVisual(); return;
@@ -1875,11 +1877,12 @@ function handleKey(e) {
 
   if (state.mode !== 'normal') { visualKey(e, n || 1); return; }
 
-  if (Object.hasOwn(motions, k)) {
+  const m = ARROWS[k] || k;
+  if (Object.hasOwn(motions, m)) {
     e.preventDefault();
-    if (!moveCursor(k, n || 1)) {
+    if (!moveCursor(m, n || 1)) {
       const d = 72 * (n || 1);
-      if (k === 'j' || k === 'k') window.scrollBy(0, k === 'j' ? d : -d);
+      if (m === 'j' || m === 'k') window.scrollBy(0, m === 'j' ? d : -d);
       else if (k === 'h' || k === 'l') window.scrollBy(k === 'l' ? d : -d, 0);
     }
     return;
