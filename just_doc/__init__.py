@@ -44,6 +44,21 @@ PORT = 8700
 # changes with the code, so a command can tell that the running just-doc is another version
 VERSION = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:8]
 MARKDOWN = (".md", ".markdown")
+# typst rules for the tables of a markdown file: cell text ragged right, the
+# header bold, a line above and below, and a long table continued on the next page
+TABLE_STYLE = """\
+#show table: set par(justify: false)
+#show table.cell: set align(left)
+#show figure.where(kind: table): set block(breakable: true)
+#set table(stroke: (x, y) => if y == 0 { (top: 0.8pt) })
+#show table: it => layout(size => {
+  let head = it.children.any(c => c.func() == table.header)
+  show table.cell.where(y: 0): c => if head { strong(c) } else { c }
+  it
+  v(0pt, weak: true)
+  line(length: measure(it, width: size.width).width, stroke: 0.8pt)
+})
+"""
 MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
 WRITING = threading.Lock()   # held while the comments file is read, changed and written back
 GUIDE = """\
@@ -213,7 +228,8 @@ def convert(doc, text, out):
     """Write the markdown ``text`` of ``doc`` as a PDF to ``out``."""
     cmd = ["pandoc", "--from=markdown", "-o", str(out)]
     if shutil.which("typst"):
-        cmd.append("--pdf-engine=typst")
+        # a wide --columns lets typst size the table columns to their text
+        cmd += ["--pdf-engine=typst", "--columns=10000", "-V", "header-includes=" + TABLE_STYLE]
     res = subprocess.run(cmd, cwd=doc.parent, input=draw_diagrams(text), capture_output=True, text=True,
                          encoding="utf-8")
     if res.returncode:
