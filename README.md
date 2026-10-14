@@ -63,6 +63,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `v` / `V` | start a visual / visual line selection (see below) |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
 | `Ctrl` `S` | export a copy of the PDF with the comments inside |
+| `Ctrl` `Shift` `S` | markdown file: save the PDF made from it as `notes.pdf` next to it, without comments |
 | `H` / `L` | previous / next tab, when several documents are open; `Alt` `←` / `Alt` `→` do the same |
 | `Ctrl` `w` | close the tab; `Alt` `w` does the same |
 | `q` then `y` | stop just-doc and close its windows; a `--wait` that is waiting ends too. Closing the window alone leaves just-doc running, and `just-doc` without a file opens the window again |
@@ -311,7 +312,9 @@ and opens that, so pandoc must be installed (with [typst](https://typst.app)
 or a LaTeX installation to make the PDF; typst is used when it is found). The
 PDF is kept in `~/.cache/just-doc` and made again when the markdown file has
 changed. Comments go to `notes.comments.json` next to the markdown file, and
-`--export` writes `notes.commented.pdf` there.
+`--export` writes `notes.commented.pdf` there. `Ctrl+Shift+S` saves the PDF
+without comments as `notes.pdf` next to the markdown file, replacing a
+`notes.pdf` that is there.
 
 A ```` ```mermaid ```` block is drawn as a diagram when `mmdc`
 ([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)) is installed;

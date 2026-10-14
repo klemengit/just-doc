@@ -586,7 +586,7 @@ def make_handler(tabs):
                 tabs.close(key)
                 self._json(200, {"ok": True})
                 return
-            if route not in ("/api/export", "/api/annotations", "/api/reply", "/api/done") or doc is None:
+            if route not in ("/api/export", "/api/pdf", "/api/annotations", "/api/reply", "/api/done") or doc is None:
                 self._json(404, {"error": "not found"})
                 return
             if route == "/api/done":
@@ -608,6 +608,19 @@ def make_handler(tabs):
                     return
                 tabs.touch(key)
                 self._json(200, {"ok": True})
+                return
+            if route == "/api/pdf":
+                # the PDF made from a markdown file, saved next to it without comments
+                if doc.suffix.lower() not in MARKDOWN:
+                    self._json(400, {"error": "this document is a PDF already"})
+                    return
+                try:
+                    out = doc.with_suffix(".pdf")
+                    shutil.copyfile(shown_pdf(doc), out)
+                except (OSError, RuntimeError) as exc:
+                    self._json(500, {"error": str(exc)})
+                    return
+                self._json(200, {"ok": True, "file": out.name})
                 return
             if route == "/api/export":
                 try:
