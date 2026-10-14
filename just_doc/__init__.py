@@ -211,15 +211,15 @@ def shown_pdf(doc):
     """Return the PDF that is shown for ``doc``.
 
     A PDF is shown as it is. A markdown file is converted with pandoc into a
-    PDF in the cache folder, again whenever the markdown file is newer. Its
-    mermaid diagrams are drawn first.
+    PDF in the cache folder, again whenever the markdown file or this code is
+    newer. Its mermaid diagrams are drawn first.
     """
     if doc.suffix.lower() not in MARKDOWN:
         return doc
     if not shutil.which("pandoc"):
         raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
     out = kept(doc, "shown")
-    if not out.exists() or out.stat().st_mtime < doc.stat().st_mtime:
+    if not out.exists() or out.stat().st_mtime < max(doc.stat().st_mtime, Path(__file__).stat().st_mtime):
         convert(doc, doc.read_text(encoding="utf-8"), out)
     return out
 
