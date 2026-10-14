@@ -67,7 +67,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `H` / `L` | previous / next tab, when several documents are open; `Alt` `←` / `Alt` `→` do the same |
 | `Ctrl` `w` | close the tab; `Alt` `w` does the same |
 | `q` then `y` | stop just-doc and close its windows; a `--wait` that is waiting ends too. Closing the window alone leaves just-doc running, and `just-doc` without a file opens the window again |
-| `?` | show or hide the full key list |
+| `?` | show or hide the full key list; in it `/` filters the keys by what you type |
 | `Esc` | deselect |
 
 In the comment box, `Enter` saves and `Shift+Enter` starts a new line.
