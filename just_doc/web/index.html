@@ -239,7 +239,7 @@
     <tr><td><kbd>0</kbd> <kbd>$</kbd></td><td>start / end of the line</td></tr>
     <tr><td><kbd>f</kbd> / <kbd>F</kbd> + character</td><td>go to that character after / before the cursor on the line</td></tr>
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
-    <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
+    <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom, the cursor too; <kbd>12G</kbd> goes to page 12</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
     <tr><td><kbd>zt</kbd> <kbd>zz</kbd> <kbd>zb</kbd></td><td>scroll the cursor line near the top (two lines above it) / to the middle / near the bottom</td></tr>
     <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>previous / next page</td></tr>
@@ -1810,6 +1810,17 @@ function cursorToAnnot(a) {
   drawCursor();
 }
 
+// gg and 12G: the cursor goes to the first word of the page; G: to the start of its last line
+function cursorToPage(p, last) {
+  state.cursorTo = null;
+  const ws = wordsForPage(p);
+  // the words of a page are known once its text is laid out
+  if (!ws.length) { state.cursorTo = () => cursorToPage(p, last); return; }
+  state.cursor = { p, i: last ? lineSpan({ p, i: ws.length - 1 })[0] : 0, o: 0 };
+  state.wantX = null;
+  drawCursor();
+}
+
 // the word at a point of a page, in points; used to put the cursor where the mouse clicked
 function wordAtPoint(p, x, y) {
   return wordsForPage(p).findIndex(w => x >= w.x - 1 && x <= w.x + w.w + 1 && Math.abs(y - w.y) <= w.h / 2 + 1);
@@ -2524,7 +2535,7 @@ function handleKey(e) {
     if (n) goto(n);
     else if (gg) scrollTop();
     else scrollBottom();
-    syncCursor();
+    cursorToPage(n || (gg ? 1 : pdf.numPages), !n && !gg);
     return;
   }
 
