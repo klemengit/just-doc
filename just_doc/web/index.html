@@ -1097,12 +1097,12 @@ function openEditor(id, fresh = false, reply = false) {
     d.className = a.done ? 'state done' : 'state';
     d.textContent = a.done ? 'done ✓' : 'open';
     thread.append(d);
-    if (a.was !== undefined) {
+    if (a.was !== undefined || (a.lost && a.text)) {
       // the text as it was before it changed; it stays in view above the replies
       const w = document.createElement('div'), i = document.createElement('i');
       w.className = 'was';
-      i.textContent = 'before ';
-      w.append(i, '«' + a.was + '»');
+      i.textContent = a.was !== undefined ? 'before ' : 'before, not found now ';
+      w.append(i, '«' + (a.was ?? a.text) + '»');
       thread.append(w);
     }
   }
