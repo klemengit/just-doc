@@ -1064,6 +1064,9 @@ function addFromSelection(kind) {
   state.annots.push(a);
   setPieces(null);
   window.getSelection().removeAllRanges();
+  // the cursor goes to the start of the new comment, as in vim after an operator
+  setMode('normal');
+  cursorToAnnot(a);
   state.sel = a.id;
   redraw();
   save();
