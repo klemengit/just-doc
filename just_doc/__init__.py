@@ -93,6 +93,8 @@ Everything goes through these commands; do not edit the .comments.json file.
    A comment without words is a plain highlight: ask what is meant.
    "text" is the text as it stands in the document now; when it was changed
    after the comment was written, a line below gives the text as it was.
+   A comment can be about a change you made: then a line gives the text as
+   it was before your change, and "removed:" stands for text you deleted.
 
 3. Answer every open comment, in the language of the comment, in a sentence
    or two; the list in the window is narrow:
@@ -153,6 +155,7 @@ def answer(doc, ref, text, name):
         a = find_comment(doc, annots, ref)
         if text is None:
             a["done"] = True
+            a["done_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         else:
             a.setdefault("replies", []).append(
                 {"from": name, "text": text, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
@@ -174,6 +177,8 @@ def keep_replies(doc, annots):
         # the window sets done to false when the author answers a comment that was done
         if was.get("done") and "done" not in a:
             a["done"] = True
+            if "done_at" in was:
+                a["done_at"] = was["done_at"]
 
 
 def cache_dir():
@@ -240,10 +245,34 @@ def kept(doc, what):
     """Return the path in the cache folder of a PDF that is kept for ``doc``.
 
     ``what`` is "shown" (a markdown file as a PDF), "handed" (the PDF at the
-    last Ctrl+Enter) or "commit" (the PDF at the last commit).
+    last Ctrl+Enter), "commit" (the PDF at the last commit) or "round3" (the
+    PDF at the third Ctrl+Enter).
     """
     name = hashlib.sha1(str(doc).encode()).hexdigest()[:16]
     return cache_dir() / (name + (".pdf" if what == "shown" else f".{what}.pdf"))
+
+
+def rounds(doc):
+    """Return the times of the Ctrl+Enter presses in ``doc``, one per round, oldest first."""
+    note = kept(doc, "handed").with_suffix(".rounds.json")
+    try:
+        return json.loads(note.read_text())
+    except (OSError, ValueError):
+        # a hand-over from before rounds were kept is the first round
+        old = kept(doc, "handed")
+        if not old.exists():
+            return []
+        shutil.copyfile(old, kept(doc, "round1"))
+        note.write_text(json.dumps([old.stat().st_mtime]))
+        return [old.stat().st_mtime]
+
+
+def new_round(doc):
+    """Keep the document as it is at a Ctrl+Enter: the start of a new round."""
+    times = rounds(doc) + [time.time()]
+    shutil.copyfile(shown_pdf(doc), kept(doc, "handed"))
+    shutil.copyfile(kept(doc, "handed"), kept(doc, f"round{len(times)}"))
+    kept(doc, "handed").with_suffix(".rounds.json").write_text(json.dumps(times))
 
 
 def git(doc, *args):
@@ -517,7 +546,7 @@ def make_handler(tabs):
             elif route in ("/", "/view"):
                 self.path = "/tabs.html" if route == "/" else "/index.html"
                 super().do_GET()
-            elif route in ("/doc", "/api/info", "/api/annotations", "/api/wait", "/api/before") and doc is None:
+            elif route in ("/doc", "/api/info", "/api/annotations", "/api/wait", "/api/before", "/api/rounds") and doc is None:
                 self._json(404, {"error": "this document is not open"})
             elif route == "/doc":
                 try:
@@ -528,13 +557,17 @@ def make_handler(tabs):
                 self._send(200, body, "application/pdf")
             elif route == "/api/before":
                 # the document as it was at the last Ctrl+Enter or at the last commit
-                commit = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("k") == ["commit"]
-                old = commit_pdf(doc, tabs.logs.get(key, [None])[0]) if commit else kept(doc, "handed")
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                commit = query.get("k") == ["commit"]
+                old = (commit_pdf(doc, tabs.logs.get(key, [None])[0]) if commit
+                       else kept(doc, f"round{int(query['n'][0])}") if query.get("k") == ["round"] else kept(doc, "handed"))
                 if old is None or not old.exists():
                     self._json(404, {"error": "the version of the last commit is not known" if commit
                                      else "nothing was handed over yet (Ctrl+Enter)"})
                 else:
                     self._send(200, old.read_bytes(), "application/pdf")
+            elif route == "/api/rounds":
+                self._json(200, {"rounds": rounds(doc)})
             elif route == "/api/info":
                 self._json(200, {"name": doc.name, "path": str(doc), "file": doc.stat().st_mtime})
             elif route == "/api/annotations":
@@ -591,7 +624,7 @@ def make_handler(tabs):
                 return
             if route == "/api/done":
                 try:
-                    shutil.copyfile(shown_pdf(doc), kept(doc, "handed"))
+                    new_round(doc)
                 except (OSError, RuntimeError):
                     pass
                 self._json(200, {"ok": True, "listening": tabs.hand(key)})
@@ -889,8 +922,13 @@ def read(doc, as_json, only_open=False):
         i = a["number"]
         where = f"p. {a['rects'][0]['p']}" + (f"  {a['source']}" if a["source"] else "")
         kind = {"box": "area", "strike": "delete"}.get(a.get("kind"), "text")
+        text = a["text"] or "(no text inside)"
+        if a.get("change") is not None and not a["text"]:
+            kind, text = "removed", a["change"]
         where += "  (done)" if a.get("done") else "" if a["open"] or only_open else "  (answered)"
-        print(f"[{i}] {where}\n    {kind + ':':<8} {a['text'] or '(no text inside)'}\n    comment: {a['comment'] or '(none)'}")
+        print(f"[{i}] {where}\n    {kind + ':':<8} {text}\n    comment: {a['comment'] or '(none)'}")
+        if a.get("change") is not None and a["text"]:
+            print(f"    (a comment on a change: before it, the text was: {a['change'] or '(nothing, it is new)'})")
         if a.get("was") is not None:
             print(f"    (the text was changed after the comment; it was: {a['was']})")
         if a.get("lost"):
@@ -920,7 +958,7 @@ def main():
     ap.add_argument("--reply", nargs=2, action="append", metavar=("N", "TEXT"),
                     help="add a reply to comment N (its number in --read, or its id); can be given several times")
     ap.add_argument("--done", action="append", metavar="N", default=[],
-                    help="mark comment N as done: its highlight leaves the page; can be given several times")
+                    help="mark comment N as done: its highlight fades and leaves at the next Ctrl+Enter; can be given several times")
     ap.add_argument("--from", dest="name", default="reply", metavar="NAME", help="with --reply: the name on the reply")
     ap.add_argument("--export", action="store_true", help="write <name>.commented.pdf with the comments inside")
     ap.add_argument("--port", type=int, default=0, help=f"port (default: {PORT})")

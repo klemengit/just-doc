@@ -36,10 +36,12 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 |---|---|
 | `a` | highlight the selection and write a comment, or edit the comment of the selected mark; `Enter` in an empty box leaves a plain highlight |
 | `A` | add a reply to the selected comment (see "Reviewing with a coding assistant") |
-| `gn` | go to the next comment with a new reply |
+| `gn` / `gN` | go to the next thing to look at since the last hand-over, a new reply or a change / back; a card shows it (see "What changed") |
 | `D` | show or hide the comments that are done |
 | `m` / `M` | mark what changed since the last hand-over / since the last commit; the same key again hides the marks (see "What changed") |
-| `gm` | go to the next change; the bar at the top shows the text as it was |
+| `a` on the card of a change | comment on that change |
+| `gb` | show the page at the cursor as it was before the changes; `gb` or `Esc` goes back |
+| `gh` | history: the rounds so far, each with what you handed over, the answers and the changes; `Enter` shows the document as it was at the end of a round (see "Rounds and history") |
 | `Ctrl` `Enter` | hand the comments over to the `just-doc --wait` that is waiting for them |
 | `s` | strike through the selection: this text should be deleted |
 | `r` | draw a rectangle (for a figure, an equation or code) and comment on it |
@@ -164,11 +166,13 @@ and `kind` `box` is a rectangle; an entry without `kind` is a highlight.
 `before` and `after` hold the letters and digits around the text, to find it
 again in a changed document (see "When the document changes"); `was` is the
 text as it was when it has changed since, and `lost` marks a comment whose
-text is not found any more.
+text is not found any more. `change` marks a comment on a change (`a` on
+the card of a change, see "What changed"): it holds the text as it was before the change, and
+an empty `text` with a `change` means that the text was removed.
 
 A comment can have `replies`, a list of entries with `text`, the time `at` and
 `from`, the name given with `--reply`. A reply without `from` was written in
-the window.
+the window. `done` marks a comment as done, and `done_at` holds when.
 
 ## Reviewing with a coding assistant
 
@@ -192,6 +196,8 @@ The round goes like this:
    so do the tab and the title of the window; in the list they are blue.
    `gn` goes to the next one, and a comment that you go to is no longer new.
    While no reply has come, the mark says that the comments are handed over.
+   The changes in the document are marked too, and `gn` goes through them
+   together with the replies (see "What changed").
 4. To answer a reply, select the comment (`n` / `p`), press `A`, write, and
    press `Ctrl+Enter` again. The box shows the comment and the replies so far.
 5. When you agree, the assistant changes the source. The window loads the new
@@ -223,10 +229,11 @@ note of the highlight.
 just-doc book.pdf --done 2
 ```
 
-marks comment 2 as done (`done` in the JSON file). Its highlight leaves the
-page and it is greyed in the list. At your next `Ctrl+Enter` the done comments
-that you have looked at leave the list, so each round starts with what is
-still open; nothing leaves the list before that. `D` shows them again, and the
+marks comment 2 as done (`done` in the JSON file). Its highlight fades and
+it is greyed in the list, under "answered since your Ctrl+Enter". At your
+next `Ctrl+Enter` the done comments that you have looked at leave the page
+and the list, so each round starts with what is still open; nothing leaves
+before that. `D` shows them again, and the
 top of the list says how many there are. The reply box (`A`) says whether the
 comment is open or done. Answering a done comment opens it again, so the next
 `--wait` prints it. `--done` can be combined
@@ -263,15 +270,34 @@ while it was not open is handled when it is opened next.
 ### What changed
 
 After a round you see the new document, but only the places you commented on.
-`m` marks everything that is not as it was at your last `Ctrl+Enter`, and `M`
-everything that is not as it was at the last commit. Changed and new text is
-underlined in blue; a red line stands where text was removed. `gm` goes from
-one change to the next, and the bar at the top shows the text as it was. The
-marks stay on when the window loads a new version of the file.
+After your first `Ctrl+Enter` everything that is not as it was then is marked:
+changed and new text is underlined in blue, and a red line stands where text
+was removed. A change has only a line and no fill, so it is not mistaken for
+a comment, which is filled. `m` hides the marks and shows them again; `M` marks everything
+that is not as it was at the last commit instead. The marks stay on when the
+window loads a new version of the file.
+
+A change with a wavy line was not asked for: no comment of the round is within two
+lines of it. These are the ones to read first, when an assistant changed more
+than you asked. A comment of the round is an open one, or one that was done
+since your last `Ctrl+Enter`. A change near a comment belongs to it.
+
+`gn` goes to the next thing to look at: a comment with a new reply, or a
+change. A card under it shows your comment, the replies and the changes that
+belong to it, each as a sentence with the old words struck out in red and the
+new ones in green; a change that was not asked for has a card of its own. The
+toolbar counts what is left, and what you have seen fades. `gN` goes back,
+`Esc` closes the card. On the card of a change, `a` comments on the change
+itself: the box and the comment keep the change in view, and `--wait` shows
+the assistant the text as it was before.
+
+Words are compared, so a change in an equation, a figure or the layout is
+easy to miss. `gb` covers the page at the cursor with the same page of the
+old version; press `gb` again to flip back and see what moved.
 
 The words of the two versions are compared in reading order, so text that
 only moved to another line or page is not a change. Page numbers and running
-heads are left out. Figures and the layout are not compared.
+heads are left out. Figures and the layout are not compared (use `gb`).
 
 For "the last commit":
 
@@ -283,6 +309,25 @@ For "the last commit":
   that is older than the last commit counts as that version too.
 
 The copies are kept in the cache folder (`~/.cache/just-doc`).
+
+### Rounds and history
+
+Every `Ctrl+Enter` starts a round, and just-doc keeps a copy of the document
+as it was then. The comment list puts what is new on top: the comments not
+handed over yet, then the ones answered since your last `Ctrl+Enter`, then
+the open ones; the older ones are greyed at the end.
+
+`gh` opens the history, newest round first. `j` / `k` move through the rounds,
+and the selected one shows the comments and replies you handed over, the
+answers that came back, and the changes in the document from that
+`Ctrl+Enter` to the next one (for the last round, to now). A click on a
+comment goes to it.
+
+`Enter` shows the document in the window as it was at the end of that round,
+as if it were then: the version of the next `Ctrl+Enter`, the changes of the
+round marked, and only the comments and replies there were by then. The
+toolbar turns purple and says which round it is. This view is read only;
+`gh` and `Enter` on the last round go back to now. `Esc` closes the history.
 
 ## Sharing the comments
 

@@ -32,6 +32,9 @@
   #toast.err { background: #b00020; }
   #status.err { color: #ff6b6b; font-weight: bold; }
   #hint { color: #ffd166; }
+  #past { display: none; border-radius: 10px; padding: 1px 10px; font-weight: 700; background: #fff; color: #6a3fa0; }
+  body.past #past { display: inline-block; }
+  body.past #bar { background: #6a3fa0; }
   #news { display: none; border-radius: 10px; padding: 1px 10px; font-weight: 700; background: #555; color: #ddd; }
   #news.wait, #news.new { display: inline-block; }
   #news.new { background: #2f7bff; color: #fff; }
@@ -47,6 +50,7 @@
   .pg .hl div.box { background: rgba(255, 179, 71, .16); border: 2px solid #f08000; box-sizing: border-box; }
   .pg .hl div.strike { background: linear-gradient(transparent 44%, #d00000 44%, #d00000 56%, transparent 56%); border-radius: 0; }
   .pg .hl div.on { outline: 2px solid #d00000; outline-offset: 1px; }
+  .pg .hl div.done:not(.on) { opacity: .3; }
   .pg .lk { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
   .pg .lk div { position: absolute; box-sizing: border-box; background: rgba(0, 90, 255, .07);
                 border-bottom: 2px solid rgba(0, 90, 255, .55); border-radius: 2px 2px 0 0; }
@@ -72,9 +76,39 @@
   .it .c { margin-top: 2px; white-space: pre-wrap; font-weight: 600; }
   .it .c.none { color: #aaa; font-weight: normal; }
   .it.done { opacity: .55; }
+  .it.old { opacity: .4; }
+  .grp { padding: 3px 10px; background: #e9e9e5; color: #555; font-size: 11px; font-weight: 700; text-transform: uppercase;
+         letter-spacing: .03em; border-bottom: 1px solid #ddd; }
+  .grp.old { color: #999; }
   .pg .hl div.fixed { background: #8fdf8f; }
-  .pg .hl div.chg { background: linear-gradient(rgba(47, 123, 255, .16) 88%, #2f7bff 88%); border-radius: 0; }
+  /* a change has no fill, only a blue line under it: a fill is a comment of yours */
+  .pg .hl div.chg { background: linear-gradient(transparent calc(100% - 2px), #2f7bff calc(100% - 2px)); border-radius: 0; }
   .pg .hl div.chg.cut { background: #d00000; }
+  /* a wavy line: a change that no comment is near, so nobody asked for it */
+  .pg .hl div.chg.own { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 3.5 Q2 0.5 4 3.5 T8 3.5' fill='none' stroke='%232f7bff' stroke-width='1.6'/%3E%3C/svg%3E") repeat-x left bottom / 8px 5px; }
+  .pg .hl div.chg.own.cut { background: #d00000; outline: 2px dashed #2f7bff; outline-offset: 1px; }
+  .pg .hl div.chg.seen { opacity: .35; }
+  .pg .hl div.chg.on { opacity: 1; }
+  .pg canvas.old { position: absolute; left: 0; top: 0; z-index: 3; box-shadow: 0 0 0 3px #f08000; }
+  .pg .card { position: absolute; z-index: 6; max-width: 460px; padding: 6px 9px; background: #fff; color: #222;
+               border: 2px solid #2f7bff; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+               font: 14px/1.45 system-ui, sans-serif; }
+  .pg .card.own { border-style: dashed; }
+  .pg .card .h { font-size: 12px; color: #666; margin-bottom: 3px; }
+  .pg .card .h b { color: #fff; background: #2f7bff; border-radius: 8px; padding: 0 7px; font-weight: 600; }
+  .pg .card .ctx { color: #888; }
+  .pg .card del { color: #c00000; background: #ffe3e3; text-decoration-thickness: 2px; }
+  .pg .card ins { color: #0b5d1e; background: #d4f5d4; text-decoration: none; font-weight: 600; }
+  .pg .card .k { margin-top: 4px; font-size: 11px; color: #777; }
+  .pg .card .mine { font-weight: 600; }
+  .pg .card .rep { margin: 2px 0 0 4px; padding-left: 6px; border-left: 2px solid #0050d0; font-size: 13px; }
+  .pg .card .rep b { color: #0050d0; }
+  .pg .card .rep.mine { border-left-color: #999; }
+  .pg .card .chl { margin-top: 4px; padding-top: 4px; border-top: 1px solid #eee; }
+  .pg .card .none { margin-top: 4px; color: #999; font-size: 12px; }
+  .pg .card kbd { background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; font: inherit; }
+  .pg .oldtag { position: absolute; left: 0; top: 0; z-index: 4; padding: 2px 8px; background: #f08000; color: #fff;
+                font: 12px sans-serif; border-radius: 0 0 4px 0; }
   #changes { display: none; border-radius: 10px; padding: 1px 10px; background: #2f7bff; color: #fff; max-width: 45vw;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   .it .q s { text-decoration-color: #d00000; }
@@ -100,6 +134,10 @@
   #ethread .was { position: sticky; top: 0; clear: both; margin: 0 0 4px; padding: 3px 6px; border-radius: 3px;
                   background: #f1f1f1; color: #555; }
   #ethread .was i { color: #888; }
+  #ethread .was.chg { background: #fff; border: 1px solid #ddd; color: #222; }
+  #ethread .was .ctx { color: #888; }
+  #ethread .was del { color: #c00000; background: #ffe3e3; text-decoration-thickness: 2px; }
+  #ethread .was ins { color: #0b5d1e; background: #d4f5d4; text-decoration: none; font-weight: 600; }
   ::highlight(find) { background-color: rgba(255, 150, 0, .38); }
   ::highlight(pieces) { background-color: rgba(0, 0, 255, .25); }
   ::highlight(findcur) { background-color: rgba(225, 0, 110, .45); }
@@ -111,6 +149,25 @@
   #toc { position: fixed; top: var(--bar); left: 0; bottom: 0; width: 400px; max-width: 80vw; z-index: 45; display: none;
          background: #f4f4f2; border-right: 1px solid #999; box-shadow: 4px 0 16px rgba(0,0,0,.4); overflow-y: auto; }
   #toc.open { display: block; }
+  #hist { position: fixed; top: var(--bar); left: 0; bottom: 0; width: 520px; max-width: 90vw; z-index: 45; display: none;
+          background: #f4f4f2; border-right: 1px solid #999; box-shadow: 4px 0 16px rgba(0,0,0,.4); overflow-y: auto;
+          font-size: 13px; line-height: 1.4; }
+  #hist.open { display: block; }
+  #hist h1 { font-size: 14px; margin: 0; padding: 10px 12px; background: #e4e4e0; position: sticky; top: 0; z-index: 1; }
+  #hist h1 small { font-weight: normal; color: #777; }
+  .hr { border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .hr.on { box-shadow: inset 3px 0 0 #d00000; background: #fff4ef; }
+  .hh { padding: 6px 12px; cursor: pointer; font-weight: 700; }
+  .hh small { font-weight: normal; color: #777; }
+  .hs { margin: 6px 12px 2px; color: #777; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .hi { margin: 2px 12px 2px 18px; cursor: pointer; }
+  .hi:hover { background: #eaeae6; }
+  .hi i { color: #555; }
+  .hi b { color: #0050d0; }
+  .hi .ctx { color: #888; }
+  .hi del { color: #c00000; background: #ffe3e3; }
+  .hi ins { color: #0b5d1e; background: #d4f5d4; text-decoration: none; font-weight: 600; }
+  .hn { margin: 2px 12px 8px 18px; color: #999; }
   #toc h1 { font-size: 14px; margin: 0; padding: 10px 12px; background: #e4e4e0; position: sticky; top: 0; }
   #toc h1 small { font-weight: normal; color: #777; }
   .t { display: flex; gap: 10px; padding: 4px 12px; cursor: pointer; }
@@ -137,15 +194,17 @@
   <span>p. <input id="pno" type="text" value="1"> / <span id="pcount">?</span></span>
   <button id="tocbtn">contents</button>
   <button id="zout">−</button><span id="zval"></span><button id="zin">+</button>
+  <span id="past"></span>
   <span id="news"></span>
   <span id="changes"></span>
   <span id="hint"></span>
   <span id="status">loading …</span>
 </div>
 <div id="pages"></div>
-<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>m</kbd>/<kbd>M</kbd> changes &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>q</kbd> quit &nbsp;<kbd>?</kbd> all keys</span></div>
+<div id="foot"><span id="mode">normal</span><span id="findbox">/<input id="q" type="text" spellcheck="false"></span><span id="findinfo"></span><span id="keys"><kbd>a</kbd> comment &nbsp;<kbd>s</kbd> strike &nbsp;<kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> <kbd>w</kbd> <kbd>b</kbd> move &nbsp;<kbd>v</kbd>/<kbd>V</kbd> select &nbsp;<kbd>n</kbd>/<kbd>p</kbd> comments &nbsp;<kbd>A</kbd> reply &nbsp;<kbd>gn</kbd> new &nbsp;<kbd>m</kbd> changes &nbsp;<kbd>gh</kbd> history &nbsp;<kbd>Ctrl</kbd>+<kbd>Enter</kbd> hand over &nbsp;<kbd>/</kbd> search &nbsp;<kbd>t</kbd> contents &nbsp;<kbd>Ctrl</kbd>+<kbd>o</kbd> back &nbsp;<kbd>q</kbd> quit &nbsp;<kbd>?</kbd> all keys</span></div>
 <div id="side"><h1>Comments (<span id="count">0</span>) <small id="archive"></small></h1><div id="list"></div></div>
 <div id="toc"><h1>Contents <small>j / k move · Enter go · Esc close</small></h1><div id="toclist"></div></div>
+<div id="hist"><h1>History <small>j / k move · Enter shows the round in the window · Esc closes</small></h1><div id="histlist"></div></div>
 <div id="toast"></div>
 <div id="help"><div class="card">
   <h2>Keys — <kbd>/</kbd> filters, <kbd>?</kbd> or <kbd>Esc</kbd> closes</h2>
@@ -153,11 +212,13 @@
   <table>
     <tr><td><kbd>a</kbd></td><td>comment on the selected text (or edit the comment of the selected mark)</td></tr>
     <tr><td><kbd>A</kbd></td><td>add a reply to the selected comment</td></tr>
-    <tr><td><kbd>gn</kbd></td><td>go to the next comment with a new reply</td></tr>
+    <tr><td><kbd>gn</kbd> / <kbd>gN</kbd></td><td>go to the next thing to look at since the last hand-over (a new reply, a change) / back; a card shows the comment, the replies and the change</td></tr>
+    <tr class="sub"><td><kbd>a</kbd></td><td>on a change: comment on it; <kbd>A</kbd> on a comment: reply</td></tr>
+    <tr><td><kbd>gh</kbd></td><td>history: the rounds so far, with what was handed over, answered and changed; <kbd>Enter</kbd> shows the document as it was at the end of a round</td></tr>
     <tr><td><kbd>D</kbd></td><td>show or hide the comments that are done</td></tr>
     <tr><td><kbd>q</kbd> <kbd>y</kbd></td><td>stop just-doc and close its windows</td></tr>
     <tr><td><kbd>m</kbd> / <kbd>M</kbd></td><td>mark what changed since the last hand-over / the last commit; again: hide</td></tr>
-    <tr><td><kbd>gm</kbd></td><td>go to the next change; the bar shows the text as it was</td></tr>
+    <tr><td><kbd>gb</kbd></td><td>show the page as it was before the changes; <kbd>gb</kbd> or <kbd>Esc</kbd> goes back</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>Enter</kbd></td><td>hand the comments over to the <code>just-doc --wait</code> that is waiting for them</td></tr>
     <tr><td><kbd>s</kbd></td><td>strike through the selected text: it should be deleted</td></tr>
     <tr><td><kbd>r</kbd></td><td>draw a rectangle and comment (for a figure, equation or code)</td></tr>
@@ -208,11 +269,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.mjs';
 const $ = id => document.getElementById(id);
 // the document of this viewer; the window can hold several, one per tab
 const DOC = new URLSearchParams(location.search).get('d') || '';
+// a round from the history (gh): the document as it was at the end of that round, read only
+const AT = parseInt(new URLSearchParams(location.search).get('at'), 10) || 0;
+const BASE = AT ? 'round' : 'handed';
 const api = path => path + (DOC ? '?d=' + DOC : '');
 // page, zoom and page view are remembered for each document, the rest for all
-const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting', 'placed', 'filed', 'changes'];
+const OWN = ['page', 'scale', 'single', 'scaleBefore', 'seen', 'waiting', 'placed', 'filed', 'changes', 'chgseen'];
 const store = {
-  key: k => (OWN.includes(k) ? DOC + ':' : '') + k,
+  // a round of the history keeps what was seen in it apart; page and zoom are shared
+  key: k => (OWN.includes(k) ? DOC + (AT && !['page', 'scale', 'single', 'scaleBefore'].includes(k) ? '@' + AT : '') + ':' : '') + k,
   get(k, d) { try { const v = localStorage.getItem(store.key(k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(store.key(k), JSON.stringify(v)); } catch {} },
 };
@@ -227,7 +292,7 @@ const links = {};      // page number -> links of the page, positions in points 
 const wordCache = {};  // page number -> word list, for visual mode; dropped when the page is unloaded
 let zoomTimer = 0;
 
-const pdf = await pdfjsLib.getDocument(api('/doc')).promise;
+const pdf = await pdfjsLib.getDocument(AT ? api('/api/before') + (DOC ? '&' : '?') + 'k=round&n=' + (AT + 1) : api('/doc')).promise;
 const base = (await pdf.getPage(1)).getViewport({ scale: 1 });
 $('pcount').textContent = pdf.numPages;
 let info = {};
@@ -396,6 +461,7 @@ function setScale(s, cx = (window.innerWidth - $('side').offsetWidth) / 2, cy = 
   applyScale();
   drawHighlights();
   drawCursor();
+  if (state.oldShown) showOld(true); else showCard();
   const nb = pgs[p].getBoundingClientRect();
   const visible = window.innerWidth - $('side').offsetWidth;
   window.scrollBy(nb.left - (visible - nb.width) / 2, nb.top + fy * nb.height - cy);
@@ -413,6 +479,8 @@ window.addEventListener('wheel', e => {
 function hint(msg) { $('hint').textContent = msg; clearTimeout(hint.t); hint.t = setTimeout(() => $('hint').textContent = '', 2500); }
 
 async function save() {
+  // a round of the history is read only: what is moved there stays there
+  if (AT) return;
   try {
     const r = await fetch(api('/api/annotations'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                              body: JSON.stringify({ annots: state.annots }) });
@@ -471,12 +539,12 @@ function sortAnnots() {
 function drawHighlights() {
   for (let i = 1; i <= pdf.numPages; i++) pgs[i].querySelector('.hl').replaceChildren();
   for (const a of state.annots) {
-    // a comment that is done stays in the list only; its text may have moved
-    if (a.done && a.id !== state.sel) continue;
+    // a comment that is done leaves the page with the list (see filed); until then it is faded
+    if (a.done && !listedNow(a) && a.id !== state.sel) continue;
     for (const r of a.rects) {
       const d = document.createElement('div');
       // green: the text was changed after the comment, and this is the new one
-      d.className = (a.was !== undefined ? 'fixed ' : (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '')) + (a.id === state.sel ? 'on' : '');
+      d.className = (a.was !== undefined ? 'fixed ' : (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '')) + (a.done ? 'done ' : '') + (a.id === state.sel ? 'on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
       pgs[r.p]?.querySelector('.hl').appendChild(d);
     }
@@ -485,9 +553,10 @@ function drawHighlights() {
   for (const m of c ? c.marks : []) {
     for (const r of m.rects) {
       const d = document.createElement('div');
-      d.className = 'chg' + (m.cut ? ' cut' : '') + (m === c.marks[c.at] ? ' on' : '');
+      d.className = 'chg' + (m.cut ? ' cut' : '') + (owner(m) ? '' : ' own') + (c.seen.includes(m.sig) ? ' seen' : '')
+                    + (state.item?.marks.includes(m) ? ' on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
-      pgs[r.p].querySelector('.hl').appendChild(d);
+      pgs[r.p]?.querySelector('.hl').appendChild(d);
     }
   }
 }
@@ -496,7 +565,8 @@ function drawHighlights() {
 // then ("filed"); D shows those too. It does not leave earlier, so nothing goes away
 // while the replies are read.
 let filed = store.get('filed', []);
-const listed = a => !(a.done && filed.includes(a.id)) || state.archive || a.id === state.sel || isNew(a);
+const listedNow = a => !(a.done && filed.includes(a.id)) || isNew(a);
+const listed = a => listedNow(a) || state.archive || a.id === state.sel;
 
 function drawList() {
   const shown = state.annots.filter(listed), hidden = state.annots.length - shown.length;
@@ -504,16 +574,26 @@ function drawList() {
   $('archive').textContent = state.archive ? '· with the done ones · D hides them' : hidden ? `· ${hidden} done · D shows them` : '';
   const list = $('list');
   list.replaceChildren();
-  for (const a of shown) {
+  // after a hand-over the list comes in groups: what is new first, what is older last
+  const since = ((AT ? rounds[AT - 1] : rounds[rounds.length - 1]) || 0) * 1000, hhmm = new Date(since).toTimeString().slice(0, 5);
+  const group = a => !since ? 0 : Date.parse(a.created) > since ? 1
+    : (a.replies || []).some(r => r.from && Date.parse(r.at) > since) || Date.parse(a.done_at) > since ? 2 : a.done ? 4 : 3;
+  const TITLE = AT ? ['', 'written in this round', `answered in round ${AT}`, 'open', 'earlier']
+    : ['', 'new, not handed over yet', `answered since your Ctrl+Enter at ${hhmm}`, 'open', 'earlier'];
+  let last = -1;
+  for (const a of shown.map(a => [group(a), a]).sort((x, y) => x[0] - y[0]).map(x => x[1])) {
+    const g = group(a);
+    if (g !== last && g) list.append(span('div', TITLE[g], 'grp' + (g === 4 ? ' old' : '')));
+    last = g;
     const it = document.createElement('div');
-    it.className = 'it' + (a.id === state.sel ? ' on' : '') + (a.done ? ' done' : '');
+    it.className = 'it' + (a.id === state.sel ? ' on' : '') + (a.done ? ' done' : '') + (last === 4 ? ' old' : '');
     it.dataset.id = a.id;
     const p = document.createElement('div'); p.className = 'p'; p.textContent = 'p. ' + a.rects[0].p + (a.done ? ' · done ✓' : '') + (a.lost ? ' · text not found' : '');
     const q = document.createElement('div'); q.className = 'q' + (a.kind === 'strike' ? ' strike' : ''); q.textContent = (a.kind === 'box' ? '▭ ' : '') + (a.text ? '«' + a.text.replace(/\s+/g, ' ') + '»' : '(area without text)');
-    if (a.was !== undefined) {
-      // the text as it was, and what stands there now
-      const was = document.createElement('s'), now = document.createElement('u');
-      was.textContent = '«' + a.was + '»';
+    if (a.was !== undefined || a.change !== undefined) {
+      // the text as it was, and what stands there now; a comment on a change shows the change
+      const was = document.createElement('s'), now = document.createElement('u'), before = a.change ?? a.was;
+      was.textContent = before ? '«' + before + '»' : '(new)';
       now.textContent = a.text ? '«' + a.text + '»' : '(deleted)';
       q.replaceChildren(was, ' → ', now);
       q.className = 'q';
@@ -800,13 +880,56 @@ function diffWords(a, b) {
   return out;
 }
 
-const SINCE = { handed: 'the last hand-over', commit: 'the last commit' };
+const SINCE = { handed: 'the last hand-over', commit: 'the last commit', round: `the hand-over of round ${AT}` };
 
-// m and M: mark what is not as it was at the last Ctrl+Enter / at the last commit
-async function showChanges(kind) {
+// the times of the Ctrl+Enter presses, one per round, in seconds
+let rounds = [];
+async function loadRounds() {
+  try { rounds = (await (await fetch(api('/api/rounds'))).json()).rounds || []; } catch {}
+}
+
+// the text of the words i0 .. i1 of a word list
+function textOf(ws, i0, i1) {
+  let out = '';
+  for (let i = Math.max(0, i0); i < Math.min(i1, ws.length); ) {
+    let k = i;
+    while (k + 1 < i1 && ws[k + 1].p === ws[i].p) k++;
+    out += placeText(ws[i].ix, ws[i].s, ws[k].e) + ' ';
+    i = k + 1;
+  }
+  return out.trim();
+}
+
+// The changes between two word lists, each with the words as they were (was) and as they are
+// (now), and a few words around it (pre, post) so that it reads as a sentence.
+function compareWords(a, b) {
+  const ids = new Map(), id = w => { const k = w.ix.key.slice(w.s, w.e); if (!ids.has(k)) ids.set(k, ids.size); return ids.get(k); };
+  const marks = [];
+  for (const [a0, a1, b0, b1] of diffWords(a.map(id), b.map(id))) {
+    const last = marks[marks.length - 1];
+    // a word or two that stayed between two changes: one change
+    if (last && a0 - last.a1 === b0 - last.b1 && b0 - last.b1 <= 2) { last.a1 = a1; last.b1 = b1; }
+    else marks.push({ a0, a1, b0, b1 });
+  }
+  for (const m of marks) {
+    m.was = textOf(a, m.a0, m.a1);
+    m.now = textOf(b, m.b0, m.b1);
+    m.pre = textOf(b, m.b0 - 6, m.b0);
+    m.post = textOf(b, m.b1, m.b1 + 6);
+    m.sig = m.was + '→' + m.now;
+  }
+  return marks;
+}
+
+// m and M: mark what is not as it was at the last Ctrl+Enter / at the last commit;
+// again hides the marks, unless fresh asks for them to be made again
+async function showChanges(kind, fresh = false) {
   if (state.comparing) return;
-  if (state.changes && state.changes.kind === kind) kind = '';
+  if (!fresh && state.changes && state.changes.kind === kind) kind = '';
+  showOld(false);
+  state.changes?.old.destroy();
   state.changes = null;
+  state.item = null;
   store.set('changes', kind);
   if (kind) {
     state.comparing = true;
@@ -814,30 +937,20 @@ async function showChanges(kind) {
     $('changes').textContent = 'comparing …';
     drawHighlights();
     try {
-      const r = await fetch(api('/api/before') + (DOC ? '&' : '?') + 'k=' + kind);
+      const r = await fetch(api('/api/before') + (DOC ? '&' : '?') + 'k=' + kind + (kind === 'round' ? '&n=' + AT : ''));
       if (!r.ok) throw new Error((await r.json()).error);
       const old = await pdfjsLib.getDocument({ data: await r.arrayBuffer() }).promise;
       const a = await wordsOf(old, p => indexOf(old, p)), b = await wordsOf(pdf, pageIndex);
-      const ids = new Map(), id = w => { const k = w.ix.key.slice(w.s, w.e); if (!ids.has(k)) ids.set(k, ids.size); return ids.get(k); };
-      const text = (ws, i0, i1) => {
-        let out = '';
-        for (let i = i0; i < i1; ) {
-          let k = i;
-          while (k + 1 < i1 && ws[k + 1].p === ws[i].p) k++;
-          out += placeText(ws[i].ix, ws[i].s, ws[k].e) + ' ';
-          i = k + 1;
-        }
-        return out.trim();
-      };
-      const marks = [];
-      for (const [a0, a1, b0, b1] of diffWords(a.map(id), b.map(id))) {
-        const last = marks[marks.length - 1];
-        // a word or two that stayed between two changes: one change
-        if (last && a0 - last.a1 === b0 - last.b1 && b0 - last.b1 <= 2) { last.a1 = a1; last.b1 = b1; }
-        else marks.push({ a0, a1, b0, b1 });
-      }
+      const marks = compareWords(a, b);
+      // the page of the old version where each page of the new one begins, for gb
+      const oldPage = [0];
+      let ai = 0, bi = 0;
+      // between two changes the words are the same in both, one for one
+      const follow = b1 => { for (; bi < b1; bi++, ai++) if (!oldPage[b[bi].p]) oldPage[b[bi].p] = a[ai].p; };
+      for (const m of marks) { follow(m.b0); ai = m.a1; bi = m.b1; }
+      follow(b.length);
+      for (let p = 1; p <= pdf.numPages; p++) oldPage[p] ||= Math.min(oldPage[p - 1] || p, old.numPages);
       for (const m of marks) {
-        m.was = text(a, m.a0, m.a1);
         m.rects = [];
         for (let i = m.b0; i < m.b1; ) {
           let k = i;
@@ -852,8 +965,11 @@ async function showChanges(kind) {
           m.cut = true;
         }
       }
-      state.changes = { kind, marks: marks.filter(m => m.rects.length), at: -1 };
-      old.destroy();
+      // a change that gn went to is "seen"; what the list holds of older rounds is dropped
+      const kept = marks.filter(m => m.rects.length), all = store.get('chgseen', {});
+      const seen = (all[kind] || []).filter(g => kept.some(m => m.sig === g));
+      store.set('chgseen', { ...all, [kind]: seen });
+      state.changes = { kind, marks: kept, seen, old, oldPage };
     } catch (err) {
       store.set('changes', '');
       hint(err.message);
@@ -862,36 +978,194 @@ async function showChanges(kind) {
   }
   showChangeInfo();
   drawHighlights();
+  showNews();
 }
 
 function showChangeInfo() {
   const c = state.changes, el = $('changes');
   el.style.display = c ? 'inline-block' : 'none';
   el.textContent = '';
-  if (!c) return;
-  const n = c.marks.length, m = c.marks[c.at];
-  el.textContent = !n ? `no changes since ${SINCE[c.kind]}`
-    : !m ? `${n} change${n > 1 ? 's' : ''} since ${SINCE[c.kind]} · gm`
-    : `${c.at + 1}/${n} · ` + (m.cut ? 'removed: «' + m.was + '»' : m.was ? 'before: «' + m.was + '»' : 'new text');
-  el.title = el.textContent;
+  if (c) {
+    const n = c.marks.length, own = c.marks.filter(m => !owner(m)).length;
+    el.textContent = !n ? `no changes since ${SINCE[c.kind]}`
+      : `${n} change${n > 1 ? 's' : ''} since ${SINCE[c.kind]}` + (own ? ` · ${own} not asked for` : '');
+    if (state.oldShown) el.textContent = 'the page as it was · gb: as it is now · ' + el.textContent;
+    el.title = el.textContent;
+  }
+  showCard();
 }
 
-// gm: go to the next change
-function stepChange() {
-  const c = state.changes;
-  if (!c) { hint('m or M marks the changes first'); return; }
-  if (!c.marks.length) return;
-  c.at = (c.at + 1) % c.marks.length;
-  const r = c.marks[c.at].rects[0];
+function span(tag, text, cls) {
+  const e = document.createElement(tag);
+  e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+// a change as a sentence: the old words struck out and the new ones in green
+function changeLine(m, el = document.createElement('div')) {
+  if (m.pre) el.append(span('span', '… ' + m.pre + ' ', 'ctx'));
+  if (m.was) el.append(span('del', m.was), ' ');
+  if (m.now) el.append(span('ins', m.now), ' ');
+  if (m.post) el.append(span('span', m.post + ' …', 'ctx'));
+  return el;
+}
+
+// The comment that a change belongs to: the nearest comment of the round within two lines of
+// it, an open one or one done since the last hand-over. A comment on a change does not count.
+// A change without one was not asked for.
+function owner(m) {
+  let best = null, dist = Infinity;
+  for (const a of state.annots) {
+    if (a.lost || filed.includes(a.id) || a.change !== undefined) continue;
+    for (const q of a.rects) for (const r of m.rects) {
+      const d = Math.abs((r.y + r.h / 2) - (q.y + q.h / 2));
+      if (r.p === q.p && d <= 2 * Math.max(r.h, q.h, 8) && d < dist) { best = a; dist = d; }
+    }
+  }
+  return best;
+}
+
+// What there is to look at after a round, in page order: each comment with a new reply,
+// together with the changes near it, and each change that no comment asked for.
+function reviewItems() {
+  const items = [], mine = new Map();
+  for (const m of state.changes?.marks || []) {
+    const a = owner(m);
+    if (!a) items.push({ key: 'm' + m.sig, marks: [m], at: m.rects[0] });
+    else mine.set(a, [...(mine.get(a) || []), m]);
+  }
+  for (const a of state.annots)
+    if (isNew(a) || mine.has(a)) items.push({ key: 'c' + a.id, a, marks: mine.get(a) || [], at: a.rects[0] });
+  return items.sort((x, y) => x.at.p - y.at.p || x.at.y - y.at.y || x.at.x - y.at.x);
+}
+const itemSeen = it => !(it.a && isNew(it.a)) && it.marks.every(m => state.changes.seen.includes(m.sig));
+
+// gn / gN: go to the next thing to look at that was not seen yet / to the one before
+async function stepReview(dir) {
+  if (!state.changes && !state.comparing && rounds.length) await showChanges(BASE);
+  const items = reviewItems(), n = items.length;
+  if (!n) { hint(rounds.length ? 'nothing new since the last hand-over' : 'no new replies'); return; }
+  const at = items.findIndex(it => it.key === state.item?.key);
+  let next = at < 0 && dir < 0 ? n - 1 : (at + dir + n) % n;
+  if (dir > 0) for (let k = 0; k < n; k++) {
+    const i = (at + 1 + k + n) % n;
+    if (!itemSeen(items[i])) { next = i; break; }
+  }
+  const it = items[next], c = state.changes;
+  if (c) {
+    for (const m of it.marks) if (!c.seen.includes(m.sig)) c.seen.push(m.sig);
+    store.set('chgseen', { ...store.get('chgseen', {}), [c.kind]: c.seen });
+  }
   pushJump();
-  goto(r.p, r.y);
+  goto(it.at.p, it.at.y);
+  if (it.a) select(it.a.id);
+  else select(null);
+  state.item = it;
+  if (it.a) cursorToAnnot(it.a);
+  else cursorToAnnot(it.marks[0]);
+  if (state.oldShown) showOld(true);
   showChangeInfo();
   drawHighlights();
+  showNews();
+}
+
+// the card under what gn went to: the comment with its replies, and the changes that belong to it
+function showCard() {
+  document.querySelector('.pg .card')?.remove();
+  const it = state.item;
+  if (!it || state.oldShown) return;
+  const a = it.a, own = !a, card = document.createElement('div');
+  card.className = 'card' + (own ? ' own' : '');
+  const h = document.createElement('div');
+  h.className = 'h';
+  const left = reviewItems().filter(x => !itemSeen(x)).length;
+  h.append((a ? 'your comment' + (a.done ? ' · done ✓' : ' · open') : 'a change')
+           + (left ? ` · ${left} more to look at` : ' · all seen') + '  ');
+  if (own) h.append(span('b', 'not asked for'));
+  card.append(h);
+  if (a) {
+    const t = span('div', a.comment || '(no comment)', 'mine');
+    card.append(t);
+    for (const r of (a.replies || []).slice(-3)) {
+      const d = document.createElement('div');
+      d.className = 'rep' + (r.from ? '' : ' mine');
+      if (r.from) d.append(span('b', r.from + ' '));
+      d.append(r.text);
+      card.append(d);
+    }
+  }
+  for (const m of it.marks) card.append(changeLine(m, span('div', '', 'chl')));
+  if (a && !it.marks.length && state.changes) card.append(span('div', 'no change near it', 'none'));
+  const k = document.createElement('div');
+  k.className = 'k';
+  k.innerHTML = (AT ? '' : a ? '<kbd>A</kbd> reply &nbsp;' : '<kbd>a</kbd> comment on it &nbsp;')
+    + '<kbd>gn</kbd> next &nbsp;<kbd>gN</kbd> back &nbsp;<kbd>gb</kbd> page as it was &nbsp;<kbd>Esc</kbd> close';
+  card.append(k);
+  // under the lowest line of it on its page, inside the page so it scrolls with it
+  const rs = [...(a ? a.rects : []), ...it.marks.flatMap(m => m.rects)].filter(r => r.p === it.at.p);
+  const low = rs.reduce((x, r) => (r.y + r.h > x.y + x.h ? r : x), rs[0]), pg = pgs[it.at.p];
+  card.style.top = (low.y + low.h) * state.scale + 6 + 'px';
+  pg.appendChild(card);
+  card.style.left = Math.max(4, Math.min(it.at.x * state.scale, pg.offsetWidth - card.offsetWidth - 4)) + 'px';
+}
+
+// a on a change that gn went to: a comment on the change; it keeps the text as it was, for
+// the author of the change
+function addFromChange() {
+  const m = state.item.marks[0];
+  const a = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: m.cut ? '' : m.now,
+              rects: m.rects.map(r => ({ ...r })), comment: '', change: m.was, created: new Date().toISOString() };
+  // removed text has nothing to point at: the comment stays where the thin mark is, like a rectangle
+  if (m.cut) a.kind = 'box';
+  // the comment box opens where the card is
+  state.item = null;
+  showCard();
+  state.annots.push(a);
+  state.sel = a.id;
+  redraw();
+  save();
+  if (!m.cut) place(a).then(changed => { if (changed) save(); }).catch(() => {});
+  return a;
+}
+
+// gb: the page at the cursor as it was in the version that the marks compare with; again: as it is now
+async function showOld(on) {
+  for (const el of document.querySelectorAll('.pg canvas.old, .pg .oldtag')) { el.width = 0; el.remove(); }
+  const was = state.oldShown;
+  state.oldShown = false;
+  const c = state.changes;
+  if (was && c) showChangeInfo();
+  if (!on || !c) return;
+  const p = state.cursor?.p || currentPage(), q = c.oldPage[p] || Math.min(p, c.old.numPages);
+  state.oldShown = p;
+  const page = await c.old.getPage(q), vp = page.getViewport({ scale: state.scale });
+  const canvas = document.createElement('canvas');
+  canvas.className = 'old';
+  canvas.width = Math.floor(vp.width * dpr);
+  canvas.height = Math.floor(vp.height * dpr);
+  canvas.style.width = vp.width + 'px';
+  canvas.style.height = vp.height + 'px';
+  const tag = document.createElement('div');
+  tag.className = 'oldtag';
+  tag.textContent = `as it was at ${SINCE[c.kind]} · its p. ${q} · gb: back to now`;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+  if (state.oldShown !== p) return;
+  // a white page under it, in case the old page is smaller
+  canvas.style.background = '#fff';
+  pgs[p].append(canvas, tag);
+  showChangeInfo();
+}
+
+async function toggleOld() {
+  if (state.oldShown) { showOld(false); return; }
+  if (!state.changes) await showChanges(BASE);
+  if (state.changes) showOld(true);
 }
 
 // after a change of the file: look for every comment again
 async function placeAll(stamp) {
-  if (!stamp || store.get('placed', 0) === stamp) return;
+  if (!stamp || (!AT && store.get('placed', 0) === stamp)) return;
   let changed = false, gen;
   // a reply that comes in meanwhile brings a new list: start again with that one
   do {
@@ -915,13 +1189,15 @@ const isNew = a => outside(a) > (looked[a.id] || 0);
 
 // the mark in the toolbar, in the list, on the tab and in the title of the window
 function showNews() {
-  const n = state.annots.filter(isNew).length;
-  if (n) store.set('waiting', false);
+  const replies = state.annots.filter(isNew).length;
+  // with the changes marked, gn goes through them too
+  const n = state.changes ? reviewItems().filter(it => !itemSeen(it)).length : replies;
+  if (replies) store.set('waiting', false);
   const el = $('news');
   el.className = n ? 'new' : store.get('waiting', false) ? 'wait' : '';
-  el.textContent = n ? `${n} new ${n > 1 ? 'replies' : 'reply'} · gn` : 'handed over, waiting for replies …';
-  for (const it of $('list').children) it.classList.toggle('new', isNew(state.annots.find(a => a.id === it.dataset.id)));
-  if (window.parent !== window) window.parent.tabNews?.(DOC, n);
+  el.textContent = n ? (state.changes ? `${n} to look at · gn` : `${n} new ${n > 1 ? 'replies' : 'reply'} · gn`) : 'handed over, waiting for replies …';
+  for (const it of $('list').querySelectorAll('.it')) it.classList.toggle('new', isNew(state.annots.find(a => a.id === it.dataset.id)));
+  if (window.parent !== window && !AT) window.parent.tabNews?.(DOC, n);
 }
 
 function markSeen(id) {
@@ -932,19 +1208,10 @@ function markSeen(id) {
   showNews();
 }
 
-// go to the next comment with a new reply
-function stepNews() {
-  const at = state.annots.findIndex(a => a.id === state.sel);
-  const a = [...state.annots.slice(at + 1), ...state.annots.slice(0, at + 1)].find(isNew);
-  if (!a) { hint('no new replies'); return; }
-  pushJump();
-  select(a.id);
-  goto(a.rects[0].p, a.rects[0].y);
-  cursorToAnnot(a);
-}
-
 function select(id) {
   state.sel = id;
+  // the card of gn goes when something else is selected
+  if (state.item && !(id && state.item.a?.id === id)) { state.item = null; showCard(); }
   if (id) markSeen(id);
   drawHighlights();
   drawList();
@@ -1095,6 +1362,7 @@ function addFromSelection(kind) {
 // fresh: the highlight was made together with this comment, so Esc removes it again;
 // reply: the box adds a reply to the comment and leaves the comment as it is
 function openEditor(id, fresh = false, reply = false) {
+  if (AT) { readOnly(); return; }
   const a = state.annots.find(x => x.id === id);
   if (!a) return;
   state.editing = id;
@@ -1112,7 +1380,7 @@ function openEditor(id, fresh = false, reply = false) {
     d.className = a.done ? 'state done' : 'state';
     d.textContent = a.done ? 'done ✓' : 'open';
     thread.append(d);
-    if (a.was !== undefined || (a.lost && a.text)) {
+    if (a.change === undefined && (a.was !== undefined || (a.lost && a.text))) {
       // the text as it was before it changed; it stays in view above the replies
       const w = document.createElement('div'), i = document.createElement('i');
       w.className = 'was';
@@ -1120,6 +1388,16 @@ function openEditor(id, fresh = false, reply = false) {
       w.append(i, '«' + (a.was ?? a.text) + '»');
       thread.append(w);
     }
+  }
+  if (a.change !== undefined) {
+    // a comment on a change: the change stays in view above the comment, as on its card
+    const w = document.createElement('div'), m = state.changes?.marks.find(m => m.was === a.change && m.now === a.text);
+    w.className = 'was chg';
+    if (m?.pre) w.append(span('span', '… ' + m.pre + ' ', 'ctx'));
+    if (a.change) w.append(span('del', a.change), ' ');
+    if (a.text) w.append(span('ins', a.text), ' ');
+    if (m?.post) w.append(span('span', m.post + ' …', 'ctx'));
+    thread.append(w);
   }
   for (const r of reply ? [{ text: a.comment }, ...(a.replies || [])] : []) {
     if (!r.text) continue;
@@ -1153,7 +1431,7 @@ function closeEditor(commit) {
     if (commit && said) {
       (a.replies ||= []).push({ text: said, at: new Date().toISOString() });
       // an answer opens a comment that was done; false and not removed, so the server does not put the mark back
-      if (a.done) { a.done = false; looked[a.id] = outside(a); store.set('seen', looked); }
+      if (a.done) { a.done = false; delete a.done_at; looked[a.id] = outside(a); store.set('seen', looked); }
       redraw();
       showNews();
       save();
@@ -1177,6 +1455,7 @@ $('etext').addEventListener('blur', () => closeEditor(true));
 
 // the comments were changed from outside (a reply came in): read them again
 window.reloadAnnots = async () => {
+  if (AT) return;
   try {
     const before = state.annots.filter(isNew).length;
     state.annots = (await (await fetch(api('/api/annotations'))).json()).annots || [];
@@ -1191,7 +1470,10 @@ window.reloadAnnots = async () => {
 };
 
 // tells the just-doc --wait command that the comments are ready to be read
+function readOnly() { hint(`round ${AT} as it was: read only · gh goes back to now`); }
+
 async function handOver() {
+  if (AT) { readOnly(); return; }
   if (state.editing) closeEditor(true);
   await save();
   filed = state.annots.filter(a => a.done && !isNew(a)).map(a => a.id);
@@ -1200,6 +1482,10 @@ async function handOver() {
   try {
     const j = await (await fetch(api('/api/done'), { method: 'POST' })).json();
     store.set('waiting', true);
+    // a new round: the changes are counted from now on
+    await loadRounds();
+    drawList();
+    if (state.changes?.kind === 'handed') await showChanges('handed', true);
     showNews();
     toast(j.listening ? `Handed over ${state.annots.length} comment(s)` : 'Handed over, but nobody is waiting yet: start just-doc with --wait');
   } catch { toast('Not handed over: the server is not responding', true); }
@@ -2029,6 +2315,110 @@ function tocKey(e) {
   else if (k === 'Escape' || k === 't') $('toc').classList.remove('open');
 }
 
+// ---------- history: one entry per round, newest first ----------
+
+const hist = { at: 0, marks: {} };
+// the round whose end the window shows: the last one is now
+const shown = () => AT || rounds.length;
+
+function toggleHistory() {
+  if ($('hist').classList.toggle('open')) {
+    if (!rounds.length) { $('hist').classList.remove('open'); hint('no rounds yet: Ctrl+Enter hands the comments over and starts one'); return; }
+    markRound(rounds.length - shown());
+  }
+}
+
+// j / k: the round whose details show; its changes are compared when it is first shown
+async function markRound(i) {
+  hist.at = Math.min(rounds.length - 1, Math.max(0, i));
+  drawHistory();
+  const n = rounds.length - hist.at;
+  if (!hist.marks[n]) {
+    try { await roundChanges(n); } catch (err) { hist.marks[n] = []; hint(err.message); }
+    if (rounds.length - hist.at === n) drawHistory();
+  }
+}
+
+// Enter: show the document as it was at the end of round n in the window; the last round is now
+function goRound(n) {
+  $('hist').classList.remove('open');
+  if (n === shown()) return;
+  const q = new URLSearchParams(location.search);
+  if (n < rounds.length) q.set('at', n); else q.delete('at');
+  location.search = q.toString();
+}
+
+// the changes made in round n: from the document at its Ctrl+Enter to the one at the next, or to now
+async function roundChanges(n) {
+  if (hist.marks[n]) return hist.marks[n];
+  const get = async k => {
+    const r = await fetch(api('/api/before') + (DOC ? '&' : '?') + 'k=round&n=' + k);
+    if (!r.ok) throw new Error('the version of this round is not kept');
+    return pdfjsLib.getDocument({ data: await r.arrayBuffer() }).promise;
+  };
+  if (rounds.length < n) throw new Error('no such round');
+  // the window shows the end of one round already; the end of the last one is the file as it is now
+  const old = await get(n), now = n === shown() ? pdf : n < rounds.length ? await get(n + 1) : await pdfjsLib.getDocument(api('/doc')).promise;
+  const words = d => (d === pdf ? wordsOf(pdf, pageIndex) : wordsOf(d, p => indexOf(d, p)));
+  hist.marks[n] = compareWords(await words(old), await words(now));
+  old.destroy();
+  if (now !== pdf) now.destroy();
+  return hist.marks[n];
+}
+
+function drawHistory() {
+  const list = $('histlist');
+  list.replaceChildren();
+  const when = t => new Date(t * 1000).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const quote = a => span('i', '«' + (a.text || a.change || '').replace(/\s+/g, ' ').slice(0, 80) + '»');
+  const inside = (x, lo, hi) => { const v = Date.parse(x) / 1000; return v > lo && v <= hi; };
+  for (let i = 0; i < rounds.length; i++) {
+    const n = rounds.length - i, t0 = n > 1 ? rounds[n - 2] : -Infinity, t = rounds[n - 1], t1 = n < rounds.length ? rounds[n] : Infinity;
+    // what you handed over at its Ctrl+Enter, and what came back before the next one
+    const asked = state.annots.filter(a => inside(a.created, t0, t));
+    const mine = state.annots.flatMap(a => (a.replies || []).filter(r => !r.from && inside(r.at, t0, t)).map(r => [a, r]));
+    const back = state.annots.flatMap(a => (a.replies || []).filter(r => r.from && inside(r.at, t, t1)).map(r => [a, r]));
+    const el = span('div', '', 'hr' + (i === hist.at ? ' on' : ''));
+    const h = span('div', `Round ${n} · ${when(t)}${n === rounds.length ? ' · now' : ''}${n === shown() ? ' · shown' : ''} `, 'hh');
+    h.append(span('small', `${asked.length + mine.length} handed over · ${back.length} answered`));
+    h.addEventListener('click', () => (i === hist.at ? goRound(n) : markRound(i)));
+    el.append(h);
+    if (i === hist.at) {
+      const row = (a, ...parts) => {
+        const r = span('div', '', 'hi');
+        r.append(quote(a), ' ', ...parts);
+        r.addEventListener('click', () => {
+          $('hist').classList.remove('open');
+          pushJump(); select(a.id); goto(a.rects[0].p, a.rects[0].y); cursorToAnnot(a);
+        });
+        el.append(r);
+      };
+      if (asked.length + mine.length) el.append(span('div', 'you handed over', 'hs'));
+      for (const a of asked) row(a, a.comment || '(no comment)');
+      for (const [a, x] of mine) row(a, 'you: ', x.text);
+      if (back.length) el.append(span('div', 'answers', 'hs'));
+      for (const [a, x] of back) row(a, span('b', x.from), ': ', x.text);
+      el.append(span('div', n === rounds.length ? 'changes so far' : 'changes in the document', 'hs'));
+      const ch = hist.marks[n];
+      if (!ch) el.append(span('div', 'comparing …', 'hn'));
+      else if (!ch.length) el.append(span('div', 'no changes', 'hn'));
+      else for (const m of ch) el.append(changeLine(m, span('div', '', 'hi')));
+    }
+    list.append(el);
+  }
+  list.querySelector('.hr.on')?.scrollIntoView({ block: 'nearest' });
+}
+
+function histKey(e) {
+  const k = e.key;
+  e.preventDefault();
+  if (k === 'j' || k === 'ArrowDown') markRound(hist.at + 1);
+  else if (k === 'k' || k === 'ArrowUp') markRound(hist.at - 1);
+  else if (k === 'Enter') goRound(rounds.length - hist.at);
+  else if (k === 'Escape' || (k === 'h' && hist.g)) $('hist').classList.remove('open');
+  hist.g = k === 'g';
+}
+
 function handleKey(e) {
   const k = e.key, lower = k.toLowerCase();
   if (k === 'Shift' || k === 'CapsLock' || k === 'AltGraph') return;
@@ -2115,18 +2505,11 @@ function handleKey(e) {
     return;
   }
   const gg = state.pending === 'g' && k === 'g';
-  if (state.pending === 'g' && k === 'm' && state.mode === 'normal') {
+  if (state.pending === 'g' && ['n', 'N', 'b', 'h'].includes(k) && state.mode === 'normal') {
     e.preventDefault();
     state.pending = state.count = '';
     hint('');
-    stepChange();
-    return;
-  }
-  if (state.pending === 'g' && k === 'n' && state.mode === 'normal') {
-    e.preventDefault();
-    state.pending = state.count = '';
-    hint('');
-    stepNews();
+    if (k === 'b') toggleOld(); else if (k === 'h') toggleHistory(); else stepReview(k === 'n' ? 1 : -1);
     return;
   }
   const n = parseInt(state.count, 10) || 0;
@@ -2157,6 +2540,7 @@ function handleKey(e) {
     }
     return;
   }
+  if (AT && (['a', 's', 'r', 'd', 'u'].includes(lower) || k === 'Delete')) { e.preventDefault(); readOnly(); return; }
   switch (k) {
     case 'V': e.preventDefault(); startVisual('vline'); return;
     case 'C': e.preventDefault(); toggleHl(); return;
@@ -2166,7 +2550,7 @@ function handleKey(e) {
       if (state.sel) openEditor(state.sel, false, true); else hint('go to a comment first (n)');
       return;
     case 'P': e.preventDefault(); setSingle(!state.single); return;
-    case 'm': case 'M': e.preventDefault(); showChanges(k === 'm' ? 'handed' : 'commit'); return;
+    case 'm': case 'M': e.preventDefault(); showChanges(k === 'm' ? BASE : 'commit'); return;
     // previous / next tab, as the buffer keys of many nvim setups
     case 'H': case 'L':
       e.preventDefault();
@@ -2190,7 +2574,7 @@ function handleKey(e) {
   switch (lower) {
     case 'a':
       e.preventDefault();
-      { const a = addFromSelection();
+      { const a = addFromSelection() || (!state.sel && state.item && !state.item.a && addFromChange());
         if (a) openEditor(a.id, true);
         else if (state.sel) openEditor(state.sel);
         else hint('select text first (v), or go to a comment (n)'); }
@@ -2212,7 +2596,9 @@ function handleKey(e) {
     case 'p': e.preventDefault(); stepAnnot(-1); return;
     case 'v': e.preventDefault(); startVisual('visual'); return;
     case 'escape':
-      if (state.rectMode) setRectMode(false);
+      if (state.item && !state.oldShown) { state.item = null; showCard(); drawHighlights(); return; }
+      if (state.oldShown) showOld(false);
+      else if (state.rectMode) setRectMode(false);
       else if (state.find) clearFind();
       else select(null);
       return;
@@ -2266,7 +2652,7 @@ document.addEventListener('keydown', e => {
   }
   if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && ['o', 'i'].includes(e.key.toLowerCase())) {
     e.preventDefault();
-    if (state.mode !== 'normal' || $('help').classList.contains('open') || $('toc').classList.contains('open')) return;
+    if (state.mode !== 'normal' || $('help').classList.contains('open') || $('toc').classList.contains('open') || $('hist').classList.contains('open')) return;
     if (e.key.toLowerCase() === 'o') jump(state.back, state.fwd); else jump(state.fwd, state.back);
     return;
   }
@@ -2277,13 +2663,14 @@ document.addEventListener('keydown', e => {
     return;
   }
   if ($('toc').classList.contains('open')) { tocKey(e); return; }
+  if ($('hist').classList.contains('open')) { histKey(e); return; }
   handleKey(e);
 });
 
 // clicking a highlight selects it
 document.addEventListener('click', e => {
   // a click in the comment list draws the list again, so its target is gone by now
-  if (!e.target.isConnected || e.target.closest('#side, #editor, #bar, #foot, #help, #toc')) return;
+  if (!e.target.isConnected || e.target.closest('#side, #editor, #bar, #foot, #help, #toc, #hist')) return;
   if (state.mode !== 'normal') exitVisual();
   if (state.skipClick || state.rectMode) return;
   const sel = window.getSelection();
@@ -2301,7 +2688,7 @@ document.addEventListener('click', e => {
   select(hit ? hit.id : null);
 });
 document.addEventListener('dblclick', e => {
-  if (e.target.closest('#side, #editor, #bar, #foot, #help, #toc')) return;
+  if (e.target.closest('#side, #editor, #bar, #foot, #help, #toc, #hist')) return;
   if (state.sel && window.getSelection().isCollapsed) openEditor(state.sel);
 });
 
@@ -2314,15 +2701,35 @@ $('zout').addEventListener('click', () => setScale(state.scale / 1.15));
 $('tocbtn').addEventListener('click', () => { $('tocbtn').blur(); toggleToc(); });
 loadToc();
 
+// The comments of a round of the history as they were at its end: the ones written by then,
+// with the replies of that time. One that is done now counts as done then when nothing came
+// after; one done before the round began is filed away, as it was then.
+function showPast() {
+  const end = rounds[AT] ?? Infinity, start = rounds[AT - 1] ?? 0;
+  const by = (x, t) => !x || Date.parse(x) / 1000 <= t;
+  state.annots = state.annots.filter(a => by(a.created, end)).map(a => {
+    const replies = (a.replies || []).filter(r => by(r.at, end));
+    return { ...a, replies, done: a.done && replies.length === (a.replies || []).length && by(a.done_at, end) };
+  });
+  filed = state.annots.filter(a => a.done && by(a.done_at, start) && a.replies.every(r => by(r.at, start))).map(a => a.id);
+  looked = {};
+  for (const a of state.annots) looked[a.id] = outside(a);
+  document.body.classList.add('past');
+  const when = new Date((rounds[AT] ?? Date.now() / 1000) * 1000).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  $('past').textContent = `round ${AT} as it was at its end, ${when} · read only · gh`;
+}
+
 // ---------- start ----------
 
 if (store.get('noSide', false)) document.body.classList.add('no-side');
 setMode('normal');
 applyScale();
+await loadRounds();
 try {
   const r = await fetch(api('/api/annotations'));
   state.annots = (await r.json()).annots || [];
-  $('status').textContent = 'ready';
+  if (AT) showPast();
+  $('status').textContent = AT ? 'read only' : 'ready';
 } catch {
   $('status').className = 'err';
   $('status').textContent = 'server is not responding';
@@ -2334,10 +2741,13 @@ redraw();
 showNews();
 goto(store.get('page', 1));
 if (store.get('single', false)) { state.scaleBefore = store.get('scaleBefore', 0); setSingle(true, false); }
-await placeAll(info.file).catch(() => {});
+await placeAll(AT ? 'round' + AT : info.file).catch(() => {});
+if (AT) $('status').textContent = 'read only';
 window.__ready = true;
-// the changes stay marked when the window loads a new version of the file
-if (store.get('changes', '')) showChanges(store.get('changes', ''));
+// the changes stay marked when the window loads a new version of the file; after a hand-over
+// they are marked until m hides them
+const marking = store.get('changes', null) ?? (rounds.length ? BASE : '');
+if (marking) showChanges(marking);
 </script>
 </body>
 </html>
