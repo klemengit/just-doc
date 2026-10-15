@@ -685,7 +685,9 @@ async function place(a) {
     }
     if (best) break;
   }
-  const c = best || loose;
+  // the same short text alone, elsewhere in the document, is most likely other text: a word
+  // that was removed here is found again pages later
+  const c = best || (loose && (loose.p === old.p || key.length >= 30) ? loose : null);
   if (!c) {
     if (a.lost) return false;
     a.lost = true;
