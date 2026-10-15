@@ -180,7 +180,7 @@
     <tr><td><kbd>3w</kbd> <kbd>5j</kbd></td><td>a number first repeats the move</td></tr>
     <tr><td><kbd>gg</kbd> / <kbd>G</kbd></td><td>go to the top / bottom; <kbd>12G</kbd> goes to page 12</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>d</kbd> / <kbd>u</kbd></td><td>half a page down / up</td></tr>
-    <tr><td><kbd>zt</kbd> <kbd>zz</kbd> <kbd>zb</kbd></td><td>scroll the cursor line to the top / middle / bottom</td></tr>
+    <tr><td><kbd>zt</kbd> <kbd>zz</kbd> <kbd>zb</kbd></td><td>scroll the cursor line near the top (two lines above it) / to the middle / near the bottom</td></tr>
     <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>previous / next page</td></tr>
     <tr><td><kbd>P</kbd></td><td>show one page at a time, fitted to the window; <kbd>P</kbd> again goes back</td></tr>
     <tr><td><kbd>v</kbd> / <kbd>V</kbd></td><td>start a visual / visual line selection at the cursor</td></tr>
@@ -1428,7 +1428,9 @@ function scrollCursorTo(where) {
   const w = wordAt(state.cursor);
   if (!w) return;
   const r = charRect(w.node, w.s + state.cursor.o, w.s + state.cursor.o + 1);
-  const top = $('bar').offsetHeight + 12, bottom = window.innerHeight - $('foot').offsetHeight - 12;
+  // about two lines stay in view above (t) or below (b) it, as with scrolloff in vim
+  const room = 12 + 2 * 1.3 * r.height;
+  const top = $('bar').offsetHeight + room, bottom = window.innerHeight - $('foot').offsetHeight - room;
   window.scrollBy(0, where === 't' ? r.top - top : where === 'b' ? r.bottom - bottom : (r.top + r.bottom - top - bottom) / 2);
   drawCursor();
 }

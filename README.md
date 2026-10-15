@@ -57,7 +57,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `f` / `F` + a character | move the cursor to that character after / before it on the line (`fa`, `3fa`); the wait for the character ends after 1.5 s |
 | `gg` / `G` | go to the top / bottom of the document; with a number first (`12G`) go to that page |
 | `Ctrl` `d` / `Ctrl` `u` | half a page down / up |
-| `zt` / `zz` / `zb` | scroll so that the cursor line is at the top / in the middle / at the bottom of the window; also in a selection |
+| `zt` / `zz` / `zb` | scroll so that the cursor line is near the top / in the middle / near the bottom of the window, with about two lines above or below it; also in a selection |
 | `←` / `→` | go to the previous / next page |
 | `P` | single page view: show one page at a time, fitted to the window; `P` again goes back to the continuous view and the zoom from before |
 | `v` / `V` | start a visual / visual line selection (see below) |
