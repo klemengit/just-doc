@@ -478,7 +478,7 @@ function drawHighlights() {
       // green: the text was changed after the comment, and this is the new one
       d.className = (a.was !== undefined ? 'fixed ' : (a.kind ? a.kind + ' ' : '') + (a.comment ? 'c ' : '')) + (a.id === state.sel ? 'on' : '');
       d.style.cssText = `left:${r.x * state.scale}px;top:${r.y * state.scale}px;width:${r.w * state.scale}px;height:${r.h * state.scale}px`;
-      pgs[r.p].querySelector('.hl').appendChild(d);
+      pgs[r.p]?.querySelector('.hl').appendChild(d);
     }
   }
   const c = state.changes;
@@ -664,6 +664,21 @@ function placesOn(a, key, p, ix, deep) {
     if (best) add(best.s, best.e, 1.9 - best.skip / 1000);
   }
   return out;
+}
+
+// A comment on a page that the document does not have any more (it got shorter) goes to
+// the end of the last page, marked as lost. Returns true when a comment was changed.
+async function keepOnPages() {
+  let changed = false;
+  for (const a of state.annots) {
+    if (!a.rects.some(r => !(r.p >= 1 && r.p <= pdf.numPages))) continue;
+    const p = pdf.numPages, ix = await pageIndex(p), it = ix.items[ix.items.length - 1];
+    a.rects = [it ? { p, x: Math.round(it.x + it.w), y: Math.round(it.y), w: 3, h: Math.round(it.h) } : { p, x: 40, y: 40, w: 3, h: 12 }];
+    a.lost = true;
+    changed = true;
+  }
+  if (changed) toast('Some comments were on pages that are not in the document any more. They are now at the end of the last page, marked "text not found".');
+  return changed;
 }
 
 // Finds the text of a comment in the document as it is now and moves the comment there.
@@ -1166,12 +1181,13 @@ window.reloadAnnots = async () => {
     const before = state.annots.filter(isNew).length;
     state.annots = (await (await fetch(api('/api/annotations'))).json()).annots || [];
     state.gen = (state.gen || 0) + 1;
+    if (await keepOnPages()) save();
     redraw();
     showNews();
     $('list').querySelector('.on')?.scrollIntoView({ block: 'nearest' });
     const n = state.annots.filter(isNew).length;
     if (n > before) toast(`${n} new ${n > 1 ? 'replies' : 'reply'} — gn goes to the next one`);
-  } catch {}
+  } catch (err) { console.error('reading the comments again failed', err); }
 };
 
 // tells the just-doc --wait command that the comments are ready to be read
@@ -2313,6 +2329,7 @@ try {
 }
 // on the first run everything that is there counts as looked at
 if (!looked) { looked = {}; for (const a of state.annots) looked[a.id] = outside(a); store.set('seen', looked); }
+if (await keepOnPages().catch(() => false)) save();
 redraw();
 showNews();
 goto(store.get('page', 1));

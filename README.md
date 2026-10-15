@@ -249,7 +249,10 @@ version:
   prints the new text and the old one. The reply box (`A`) shows the old text
   in its first line, above the replies.
 - When the text around it is gone too, the comment keeps its old place and
-  the list says "text not found".
+  the list says "text not found". A short text, such as one word, is not
+  looked for on other pages, because the same word stands in many places.
+- A comment on a page that the new version does not have (it got shorter)
+  goes to the end of the last page, also with "text not found".
 
 Each comment remembers 120 letters and digits before and after its text for
 this. A changed text next to another changed text is found as one piece, so
