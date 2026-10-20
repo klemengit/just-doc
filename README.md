@@ -9,6 +9,7 @@ just-doc book.pdf          # open for commenting
 just-doc book.pdf --read   # print the comments
 just-doc book.pdf --export # write book.commented.pdf with the comments inside
 just-doc notes.md          # a markdown file works the same way
+just-doc slides.html       # and an HTML file, such as a slide deck
 just-doc                   # list the open documents; open the window again if it was closed
 just-doc book.pdf --wait   # open it, wait for Ctrl+Enter, then print the comments
 just-doc book.pdf --reply 2 "text"   # add a reply to comment 2
@@ -65,7 +66,7 @@ Chrome app window if one is installed, otherwise a tab in the default browser.
 | `v` / `V` | start a visual / visual line selection (see below) |
 | `Ctrl` + wheel, `Ctrl` `+` / `-` / `0` | zoom the page around the pointer; the toolbar and comment list keep their size |
 | `Ctrl` `S` | export a copy of the PDF with the comments inside |
-| `Ctrl` `Shift` `S` | markdown file: save the PDF made from it as `notes.pdf` next to it, without comments |
+| `Ctrl` `Shift` `S` | markdown or HTML file: save the PDF made from it as `notes.pdf` next to it, without comments |
 | `H` / `L` | previous / next tab, when several documents are open; `Alt` `←` / `Alt` `→` do the same |
 | `Ctrl` `w` | close the tab; `Alt` `w` does the same |
 | `q` then `y` | stop just-doc and close its windows; a `--wait` that is waiting ends too. Closing the window alone leaves just-doc running, and `just-doc` without a file opens the window again |
@@ -244,8 +245,8 @@ with `--reply` and given several times.
 
 ### When the document changes
 
-When the file of an open document changes on disk (the markdown file was
-edited, the PDF was compiled again), the window loads it again by itself and
+When the file of an open document changes on disk (the markdown or HTML file
+was edited, the PDF was compiled again), the window loads it again by itself and
 stays on the page. It then looks for the text of every comment in the new
 version:
 
@@ -301,7 +302,7 @@ heads are left out. Figures and the layout are not compared (use `gb`).
 
 For "the last commit":
 
-- A file that is in git (a markdown file, a PDF that is committed) is taken
+- A file that is in git (a markdown or HTML file, a PDF that is committed) is taken
   from the last commit.
 - A PDF that is built from a source and is not in git has no version there.
   just-doc keeps a copy of it whenever a commit is made in its repository
@@ -382,6 +383,32 @@ note:
 
 After the markdown file was edited, the highlights move to their text in the
 new PDF (see "When the document changes").
+
+## HTML files
+
+`just-doc slides.html` prints the page to a PDF with the browser that shows the
+window (Chromium, Brave or Chrome, run without a window) and opens that. The
+rest is as for a markdown file: the PDF is kept in `~/.cache/just-doc` and made
+again when the HTML file has changed, `Ctrl+Shift+S` saves it as `slides.pdf`,
+and `--read` adds the line in the HTML file for each comment. Only the text of
+the page is searched, not the tags, scripts, styles or title; text that a
+script writes has no line.
+
+The page decides the paper and the page breaks with its print rules, so a
+slide deck needs them to get one slide per page:
+
+```css
+@page { size: 1280px 720px; margin: 0 }
+section { page-break-after: always }
+```
+
+A [reveal.js](https://revealjs.com) deck does this by itself: the page is
+opened as `slides.html?print-pdf`, which is reveal's print view. Scripts run
+for up to ten seconds of page time before the page is printed. Pictures and
+styles are loaded as the page links them, also from the internet.
+
+A change in a linked file (a style sheet, a picture) is not seen; save the HTML
+file again to make the PDF again.
 
 ## Third-party code
 

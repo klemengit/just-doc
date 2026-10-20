@@ -252,7 +252,7 @@
     <tr class="sub"><td><kbd>a</kbd> / <kbd>s</kbd></td><td>comment on / strike through the selection</td></tr>
     <tr><td><kbd>Ctrl</kbd> wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom around the pointer</td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>export a copy of the PDF with the comments inside</td></tr>
-    <tr><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>S</kbd></td><td>markdown file: save the PDF made from it next to it, without comments</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>S</kbd></td><td>markdown or HTML file: save the PDF made from it next to it, without comments</td></tr>
     <tr><td><kbd>H</kbd> / <kbd>L</kbd></td><td>previous / next tab, when several documents are open; also <kbd>Alt</kbd> <kbd>←</kbd> / <kbd>→</kbd></td></tr>
     <tr><td><kbd>Ctrl</kbd> <kbd>w</kbd></td><td>close the tab; also <kbd>Alt</kbd> <kbd>w</kbd></td></tr>
     <tr><td><kbd>?</kbd></td><td>show or hide this list</td></tr>
@@ -520,13 +520,13 @@ async function exportPdf() {
   }
 }
 
-// saves the PDF made from a markdown file next to it, without the comments
+// saves the PDF made from a markdown or an HTML file next to it, without the comments
 async function savePdf() {
   try {
     const r = await fetch(api('/api/pdf'), { method: 'POST' });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
-    toast(`Saved the PDF as ${j.file}, next to the markdown file`);
+    toast(`Saved the PDF as ${j.file}, next to the source file`);
   } catch (e) {
     toast('Saving the PDF failed: ' + e.message, true);
   }

@@ -8,6 +8,8 @@ Usage
 -----
     just-doc book.pdf            open the PDF for commenting
     just-doc notes.md            the same for a markdown file (needs pandoc)
+    just-doc slides.html         the same for an HTML file (needs Chromium,
+                                 Brave or Chrome)
     just-doc other.pdf           while a window is open: a new tab in it
     just-doc book.pdf --read     print the comments (with source lines if
                                  book.synctex.gz is next to the PDF)
@@ -30,12 +32,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -44,6 +48,7 @@ PORT = 8700
 # changes with the code, so a command can tell that the running just-doc is another version
 VERSION = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:8]
 MARKDOWN = (".md", ".markdown")
+HTML = (".html", ".htm")
 # typst rules for the tables of a markdown file: cell text ragged right, the
 # header bold, a line above and below, and a long table continued on the next page
 TABLE_STYLE = """\
@@ -59,12 +64,18 @@ TABLE_STYLE = """\
   line(length: measure(it, width: size.width).width, stroke: 0.8pt)
 })
 """
+# put at the top of an HTML page that is printed: its folder for the links, and
+# frames from a timer, as a headless browser on page time draws none
+PRINT_HEAD = """<base href="{base}"><script>
+window.requestAnimationFrame = f => setTimeout(() => f(performance.now()), 16);
+window.cancelAnimationFrame = id => clearTimeout(id);
+</script>"""
 MERMAID = re.compile(r"^```+ *\{?\.?mermaid\}? *\n(.*?)^```+ *$", re.M | re.S)
 WRITING = threading.Lock()   # held while the comments file is read, changed and written back
 GUIDE = """\
 just-doc: review a document together with its author
 
-The author reads a PDF or a markdown file in the just-doc window and writes
+The author reads a PDF, a markdown or an HTML file in the just-doc window and writes
 comments on pieces of its text. You answer the comments and fix the source.
 Everything goes through these commands; do not edit the .comments.json file.
 
@@ -87,8 +98,8 @@ Everything goes through these commands; do not edit the .comments.json file.
            reply (author): the author's answer to it
 
    3 is the number of the comment, p. 12 the page, and chapter.tex:140 the
-   place in the source when it is known (for markdown, and for LaTeX with
-   SyncTeX). "delete:" instead of "text:" means that the author wants this
+   place in the source when it is known (for markdown and HTML, and for
+   LaTeX with SyncTeX). "delete:" instead of "text:" means that the author wants this
    text removed. "area:" is a rectangle around a figure, an equation or code.
    A comment without words is a plain highlight: ask what is meant.
    "text" is the text as it stands in the document now; when it was changed
@@ -212,25 +223,34 @@ def draw_diagrams(text):
     return MERMAID.sub(picture, text)
 
 
+def is_converted(doc):
+    """Whether ``doc`` is a source that is converted to a PDF (markdown or HTML)."""
+    return doc.suffix.lower() in MARKDOWN + HTML
+
+
 def shown_pdf(doc):
     """Return the PDF that is shown for ``doc``.
 
-    A PDF is shown as it is. A markdown file is converted with pandoc into a
-    PDF in the cache folder, again whenever the markdown file or this code is
-    newer. Its mermaid diagrams are drawn first.
+    A PDF is shown as it is. A markdown or an HTML file is converted into a
+    PDF in the cache folder, again whenever the file or this code is newer.
     """
-    if doc.suffix.lower() not in MARKDOWN:
+    if not is_converted(doc):
         return doc
-    if not shutil.which("pandoc"):
-        raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
     out = kept(doc, "shown")
     if not out.exists() or out.stat().st_mtime < max(doc.stat().st_mtime, Path(__file__).stat().st_mtime):
-        convert(doc, doc.read_text(encoding="utf-8"), out)
+        convert(doc, None, out)
     return out
 
 
 def convert(doc, text, out):
-    """Write the markdown ``text`` of ``doc`` as a PDF to ``out``."""
+    """Write ``doc`` as a PDF to ``out``; ``text`` is its content, or None for the file as it is."""
+    if doc.suffix.lower() in HTML:
+        print_html(doc, text, out)
+        return
+    if not shutil.which("pandoc"):
+        raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
+    if text is None:
+        text = doc.read_text(encoding="utf-8")
     cmd = ["pandoc", "--from=markdown", "-o", str(out)]
     if shutil.which("typst"):
         # a wide --columns lets typst size the table columns to their text
@@ -241,10 +261,42 @@ def convert(doc, text, out):
         raise RuntimeError(f"pandoc could not convert {doc.name}:\n{res.stderr.strip()}")
 
 
+def print_html(doc, text, out):
+    """Print the HTML file ``doc`` to the PDF ``out`` with a headless browser.
+
+    The page sets the paper size and the page breaks with its print rules
+    (``@page``); a reveal.js deck gets one slide per page through
+    ``?print-pdf``. Scripts run for up to ten seconds of page time first.
+    ``text`` is printed in place of the file, or the file itself when it is
+    None. A copy in a temporary folder is printed, with its pictures and
+    styles taken from the folder of ``doc``.
+    """
+    exe = next((shutil.which(name) for name in BROWSERS if shutil.which(name)), None)
+    if exe is None:
+        raise RuntimeError("an HTML file needs Chromium, Brave or Chrome to be installed")
+    if text is None:
+        text = doc.read_text(encoding="utf-8")
+    at = re.search(r"<head[^>]*>", text, re.I) or re.search(r"<!doctype[^>]*>", text, re.I)
+    at = at.end() if at else 0
+    text = text[:at] + PRINT_HEAD.format(base=doc.parent.as_uri() + "/") + text[at:]
+    with tempfile.TemporaryDirectory(prefix="just-doc-") as tmp:
+        page = Path(tmp) / doc.name
+        page.write_text(text, encoding="utf-8")
+        # an own profile, so a browser window that is open does not take the job over
+        cmd = [exe, "--headless", "--disable-gpu", f"--user-data-dir={tmp}/profile", "--no-pdf-header-footer",
+               "--virtual-time-budget=10000", f"--print-to-pdf={out}", page.as_uri() + "?print-pdf"]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"{Path(exe).name} did not finish printing {doc.name}") from None
+    if res.returncode or not out.exists():
+        raise RuntimeError(f"{Path(exe).name} could not print {doc.name}:\n{res.stderr.strip()}")
+
+
 def kept(doc, what):
     """Return the path in the cache folder of a PDF that is kept for ``doc``.
 
-    ``what`` is "shown" (a markdown file as a PDF), "handed" (the PDF at the
+    ``what`` is "shown" (a markdown or an HTML file as a PDF), "handed" (the PDF at the
     last Ctrl+Enter), "commit" (the PDF at the last commit) or "round3" (the
     PDF at the third Ctrl+Enter).
     """
@@ -308,13 +360,13 @@ def commit_pdf(doc, log, now=False):
                 data = git(doc, "show", "HEAD:./" + doc.name)
                 if data is None:
                     return None
-                if doc.suffix.lower() in MARKDOWN:
+                if is_converted(doc):
                     convert(doc, data.decode("utf-8"), out)
                 else:
                     out.write_bytes(data)
                 note.write_text(mark)
             return out
-        if log is None or not log.exists() or doc.suffix.lower() in MARKDOWN:
+        if log is None or not log.exists() or is_converted(doc):
             return None
         mark = f"commit at {log.stat().st_mtime}"
         if was != mark:
@@ -643,8 +695,8 @@ def make_handler(tabs):
                 self._json(200, {"ok": True})
                 return
             if route == "/api/pdf":
-                # the PDF made from a markdown file, saved next to it without comments
-                if doc.suffix.lower() not in MARKDOWN:
+                # the PDF made from a markdown or an HTML file, saved next to it without comments
+                if not is_converted(doc):
                     self._json(400, {"error": "this document is a PDF already"})
                     return
                 try:
@@ -875,19 +927,55 @@ def source_line(doc, rect, centre=False):
     return f"{name}:{line}" if name and line else None
 
 
-def markdown_lines(doc, annots):
-    """Find the line of each comment's text in the markdown file ``doc``.
+class PageText(HTMLParser):
+    """Collect the letters and digits of the text of an HTML page, each with its line.
+
+    The tags, their attributes, scripts, styles and the title are left out.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.chars, self.lines, self.skip = [], [], 0
+
+    def handle_starttag(self, tag, attrs):
+        self.skip += tag in ("script", "style", "title")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "title") and self.skip:
+            self.skip -= 1
+
+    def handle_data(self, data):
+        if self.skip:
+            return
+        line = self.getpos()[0]
+        for ch in data:
+            if ch == "\n":
+                line += 1
+            elif ch.isalnum():
+                self.chars.append(ch.lower())
+                self.lines.append(line)
+
+
+def source_lines(doc, annots):
+    """Find the line of each comment's text in the markdown or HTML file ``doc``.
 
     Only letters and digits are compared, so the markup, the line breaks and
     the hyphenation of the PDF do not matter. A text that occurs more than
     once gets the line of its first occurrence and a note.
     """
-    chars, lines = [], []
-    for number, row in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
-        for ch in row:
-            if ch.isalnum():
-                chars.append(ch.lower())
-                lines.append(number)
+    text = doc.read_text(encoding="utf-8")
+    if doc.suffix.lower() in HTML:
+        page = PageText()
+        page.feed(text)
+        page.close()
+        chars, lines = page.chars, page.lines
+    else:
+        chars, lines = [], []
+        for number, row in enumerate(text.splitlines(), 1):
+            for ch in row:
+                if ch.isalnum():
+                    chars.append(ch.lower())
+                    lines.append(number)
     body = "".join(chars)
     for a in annots:
         key = "".join(ch.lower() for ch in a["text"] if ch.isalnum())[:80]
@@ -907,8 +995,8 @@ def is_open(a):
 
 def read(doc, as_json, only_open=False):
     annots = load_comments(doc)["annots"]
-    if doc.suffix.lower() in MARKDOWN:
-        markdown_lines(doc, annots)
+    if is_converted(doc):
+        source_lines(doc, annots)
     else:
         for a in annots:
             a["source"] = source_line(doc, a["rects"][0], centre=a.get("kind") == "box")
@@ -945,8 +1033,8 @@ def read(doc, as_json, only_open=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF or a markdown file; comments are saved as JSON.")
-    ap.add_argument("pdf", type=Path, metavar="file", nargs="?", help="a PDF or a markdown file; without it, the documents that are open are listed")
+    ap = argparse.ArgumentParser(prog="just-doc", description="Highlight and comment a PDF, a markdown or an HTML file; comments are saved as JSON.")
+    ap.add_argument("pdf", type=Path, metavar="file", nargs="?", help="a PDF, a markdown or an HTML file; without it, the documents that are open are listed")
     ap.add_argument("--read", action="store_true", help="print the comments instead of opening the PDF")
     ap.add_argument("--json", action="store_true", help="with --read or --wait: print JSON")
     ap.add_argument("--wait", action="store_true",
