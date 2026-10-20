@@ -251,7 +251,8 @@ def convert(doc, text, out):
         raise RuntimeError("a markdown file needs pandoc (https://pandoc.org) to be installed")
     if text is None:
         text = doc.read_text(encoding="utf-8")
-    cmd = ["pandoc", "--from=markdown", "-o", str(out)]
+    # headings get the ids GitHub gives them, so the #links written for GitHub find their target
+    cmd = ["pandoc", "--from=markdown+gfm_auto_identifiers", "-o", str(out)]
     if shutil.which("typst"):
         # a wide --columns lets typst size the table columns to their text
         cmd += ["--pdf-engine=typst", "--columns=10000", "-V", "header-includes=" + TABLE_STYLE]
